@@ -309,7 +309,7 @@ int main(int argc, char* argv[])
 	char *outputMsg = (char *)calloc(10000,sizeof(char));
 	char line[100];
 
-	int j, k;
+	int j;
 	int class;
 	float dist, minDist;
 	int it=0;
@@ -336,8 +336,8 @@ int main(int argc, char* argv[])
 //? we setup the whole thing :
 	int local_lns = (lines + size - 1) / size; // Ensures all processes get a fair split
 
-	float *local_data = (float*)malloc(local_lns * samples * sizeof(float));
-	int *local_classmap = (int *)malloc(local_lns*sizeof(int));
+	float *local_data = (float*)calloc(local_lns * samples , sizeof(float));
+	int *local_classmap = (int *)calloc(local_lns, sizeof(int));
 
 //SCATTER:
 	MPI_Scatter(data, local_lns * samples, MPI_FLOAT, 
@@ -354,18 +354,15 @@ int main(int argc, char* argv[])
 		for(i=0; i<local_lns; i++){
 			class=1;
 			minDist=FLT_MAX;
-			for(j=0; j<K; j++)
-			{
+			for(j=0; j<K; j++){
 				dist=euclideanDistance(&local_data[i*samples], &centroids[j*samples], samples);
-
-				if(dist < minDist)
-				{
+				if(dist < minDist){
 					minDist=dist;
 					class=j+1;
 				}
 			}
-			if(local_classmap[i]!=class)
-			{
+
+			if(local_classmap[i]!=class){
 				changes++;
 			}
 			local_classmap[i]=class;
@@ -390,14 +387,19 @@ int main(int argc, char* argv[])
 				}
 			}
 
-			MPI_Allreduce(auxCentroids, centroids, K * samples, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-			MPI_Allreduce(pointsPerClass, pointsPerClass, K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+			MPI_Reduce(auxCentroids, centroids, K * samples, MPI_FLOAT, MPI_SUM, root, MPI_COMM_WORLD);
+			MPI_Reduce(pointsPerClass, pointsPerClass, K, MPI_INT, MPI_SUM, root, MPI_COMM_WORLD);
 
-			for(i=0; i<K; i++) 
-			{
-				for(j=0; j<samples; j++){
-					if(pointsPerClass[i] > 0){
-					centroids[i*samples+j] /= pointsPerClass[i];
+			MPI_Bcast(centroids, K * samples, MPI_FLOAT, root, MPI_COMM_WORLD);
+			MPI_Bcast(pointsPerClass, K, MPI_INT, root, MPI_COMM_WORLD);
+
+			if (rank == root) {
+				for(i=0; i<K; i++) 
+				{
+					for(j=0; j<samples; j++){
+						if(pointsPerClass[i] > 0){
+						centroids[i*samples+j] /= pointsPerClass[i];
+						}
 					}
 				}
 			}
@@ -411,16 +413,21 @@ int main(int argc, char* argv[])
 		}
 
 		// Get the maximum centroid distance across all processes
-MPI_Allreduce(&maxDist, &maxDist, 1, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
+MPI_Reduce(&maxDist, &maxDist, 1, MPI_FLOAT, MPI_MAX, root, MPI_COMM_WORLD);
 
 // Get the total number of changes across all processes
-MPI_Allreduce(&changes, &changes, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+MPI_Reduce(&changes, &changes, 1, MPI_INT, MPI_SUM, root, MPI_COMM_WORLD);
 
+if (rank == root) {
+	sprintf(line,"\n[%d] Cluster changes: %d\tMax. centroid distance: %f", it, changes, maxDist);
+	outputMsg = strcat(outputMsg,line);
+}
+
+// Broadcast termination conditions from root to all processes
+MPI_Bcast(&changes, 1, MPI_INT, root, MPI_COMM_WORLD);
+MPI_Bcast(&maxDist, 1, MPI_FLOAT, root, MPI_COMM_WORLD);
 
 		
-		sprintf(line,"\n[%d] Cluster changes: %d\tMax. centroid distance: %f", it, changes, maxDist);
-		outputMsg = strcat(outputMsg,line);
-			
 }while((changes>minChanges) && (it<maxIterations) && (maxDist>maxThreshold));
 
 /*
@@ -471,7 +478,6 @@ MPI_Allreduce(&changes, &changes, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 	free(outputMsg);
 	free(local_classmap);
 	free(local_data);
-	//free(local_lns);
 
 	//END CLOCK*****************************************
 	end = MPI_Wtime();
