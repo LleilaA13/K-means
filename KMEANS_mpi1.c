@@ -320,7 +320,9 @@ int main(int argc, char* argv[])
 	int *pointsPerClass = (int *)malloc(K*sizeof(int));
 	float *auxCentroids = (float*)malloc(K*samples*sizeof(float));
 	float *distCentroids = (float*)malloc(K*sizeof(float)); 
-	if (pointsPerClass == NULL || auxCentroids == NULL || distCentroids == NULL)
+	int *local_pointsPerClass = (int *)malloc(K*sizeof(int));
+	float *local_auxCentroids = (float*)malloc(K*samples*sizeof(float));
+	if (pointsPerClass == NULL || auxCentroids == NULL || distCentroids == NULL || local_pointsPerClass == NULL || local_auxCentroids == NULL)
 	{
 		fprintf(stderr,"Memory allocation error.\n");
 		MPI_Abort( MPI_COMM_WORLD, EXIT_FAILURE );
@@ -344,89 +346,72 @@ int main(int argc, char* argv[])
 
 
 
-	do{
-		it++;
-		//1. Calculate the distance from each point to the centroid
-		//Assign each point to the nearest centroid.
-		changes = 0;
-		for(i=0; i<local_lns; i++){
-			class=1;
-			minDist=FLT_MAX;
-			for(j=0; j<K; j++){
-				dist=euclideanDistance(&local_data[i*samples], &centroids[j*samples], samples);
-				if(dist < minDist){
-					minDist=dist;
-					class=j+1;
-				}
-			}
+do {
+    it++;
+    changes = 0;
 
-			if(local_classmap[i]!=class){
-				changes++;
-			}
-			local_classmap[i]=class;
-		}
+    // Step 1: Assign each local point to the nearest centroid
+    for (i = 0; i < local_lns; i++) {
+        class = 1;
+        minDist = FLT_MAX;
+        for (j = 0; j < K; j++) {
+            dist = euclideanDistance(&local_data[i * samples], &centroids[j * samples], samples);
+            if (dist < minDist) {
+                minDist = dist;
+                class = j + 1;
+            }
+        }
+        if (local_classmap[i] != class) {
+            changes++;
+        }
+        local_classmap[i] = class;
+    }
 
-		//? WE GATHER 
-		MPI_Allgather(local_classmap, local_lns, MPI_INT, classMap,
-			local_lns, MPI_INT, MPI_COMM_WORLD);
+    // Step 2: Compute local cluster sums
+    zeroIntArray(local_pointsPerClass, K);
+    zeroFloatMatriz(local_auxCentroids, K, samples);
 
+    for (i = 0; i < local_lns; i++) {
+        class = local_classmap[i] - 1;
+        local_pointsPerClass[class]++;
+        for (j = 0; j < samples; j++) {
+            local_auxCentroids[class * samples + j] += local_data[i * samples + j];
+        }
+    }
 
-		// 2. Recalculates the centroids: calculates the mean within each cluster
-			zeroIntArray(pointsPerClass,K);
-			zeroFloatMatriz(auxCentroids,K,samples);
+    // Step 3: Reduce to get global sums
+    MPI_Allreduce(local_pointsPerClass, pointsPerClass, K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(local_auxCentroids, auxCentroids, K * samples, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&changes, &changes, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
-			for(i=0; i<local_lns; i++) 
-			{
-				class=local_classmap[i];
-				pointsPerClass[class-1] = pointsPerClass[class-1] +1;
+    // Step 4: Update centroids
+    if (rank == root) {
+        for (i = 0; i < K; i++) {
+            if (pointsPerClass[i] > 0) {
+                for (j = 0; j < samples; j++) {
+                    centroids[i * samples + j] = auxCentroids[i * samples + j] / pointsPerClass[i];
+                }
+            }
+        }
+    }
 
-				for(j=0; j<samples; j++){
-					auxCentroids[(class-1)*samples+j] += local_data[i*samples+j];
-				}
-			}
+    // Step 5: Broadcast new centroids
+    MPI_Bcast(centroids, K * samples, MPI_FLOAT, root, MPI_COMM_WORLD);
 
-			MPI_Reduce(auxCentroids, centroids, K * samples, MPI_FLOAT, MPI_SUM, root, MPI_COMM_WORLD);
-			MPI_Reduce(pointsPerClass, pointsPerClass, K, MPI_INT, MPI_SUM, root, MPI_COMM_WORLD);
+    // Step 6: Compute max centroid shift
+    maxDist = FLT_MIN;
+    for (i = 0; i < K; i++) {
+        distCentroids[i] = euclideanDistance(&centroids[i * samples], &auxCentroids[i * samples], samples);
+        if (distCentroids[i] > maxDist) {
+            maxDist = distCentroids[i];
+        }
+    }
 
-			MPI_Bcast(centroids, K * samples, MPI_FLOAT, root, MPI_COMM_WORLD);
-			MPI_Bcast(pointsPerClass, K, MPI_INT, root, MPI_COMM_WORLD);
+    // Broadcast termination conditions
+    MPI_Bcast(&maxDist, 1, MPI_FLOAT, root, MPI_COMM_WORLD);
 
-			if (rank == root) {
-				for(i=0; i<K; i++) 
-				{
-					for(j=0; j<samples; j++){
-						if(pointsPerClass[i] > 0){
-						centroids[i*samples+j] /= pointsPerClass[i];
-						}
-					}
-				}
-			}
-			
-		maxDist=FLT_MIN;
-		for(i=0; i<K; i++){
-			distCentroids[i]=euclideanDistance(&centroids[i*samples], &auxCentroids[i*samples], samples);
-			if(distCentroids[i]>maxDist) {
-				maxDist=distCentroids[i];
-			}
-		}
+} while ((changes > minChanges) && (it < maxIterations) && (maxDist > maxThreshold));
 
-		// Get the maximum centroid distance across all processes
-MPI_Reduce(&maxDist, &maxDist, 1, MPI_FLOAT, MPI_MAX, root, MPI_COMM_WORLD);
-
-// Get the total number of changes across all processes
-MPI_Reduce(&changes, &changes, 1, MPI_INT, MPI_SUM, root, MPI_COMM_WORLD);
-
-if (rank == root) {
-	sprintf(line,"\n[%d] Cluster changes: %d\tMax. centroid distance: %f", it, changes, maxDist);
-	outputMsg = strcat(outputMsg,line);
-}
-
-// Broadcast termination conditions from root to all processes
-MPI_Bcast(&changes, 1, MPI_INT, root, MPI_COMM_WORLD);
-MPI_Bcast(&maxDist, 1, MPI_FLOAT, root, MPI_COMM_WORLD);
-
-		
-}while((changes>minChanges) && (it<maxIterations) && (maxDist>maxThreshold));
 
 /*
  *
@@ -476,6 +461,7 @@ MPI_Bcast(&maxDist, 1, MPI_FLOAT, root, MPI_COMM_WORLD);
 	free(outputMsg);
 	free(local_classmap);
 	free(local_data);
+
 
 	//END CLOCK*****************************************
 	end = MPI_Wtime();
