@@ -163,7 +163,6 @@ void initCentroids(const float *data, float *centroids, int *centroidPos, int sa
 		memcpy(&centroids[i * samples], &data[idx * samples], (samples * sizeof(float)));
 	}
 }
-
 /*
 Function euclideanDistance: Euclidean distance
 This function could be modified
@@ -196,6 +195,11 @@ void zeroIntArray(int *array, int size)
 	memset(array, 0, size * sizeof(int));
 }
 
+
+
+/*
+ * Main function
+ */
 int main(int argc, char *argv[])
 {
 	// Initialize MPI
