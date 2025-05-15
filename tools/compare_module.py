@@ -1,36 +1,24 @@
-import sys
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
-def compare_files(file1, file2):
-    try:
-        with open(file1, 'r') as f1, open(file2, 'r') as f2:
-            lines1 = f1.readlines()
-            lines2 = f2.readlines()
+def load_labels(filename):
+    with open(filename, 'r') as f:
+        return [int(line.strip()) for line in f if line.strip()]
 
-            if lines1 == lines2:
-                print("The files are identical.")
-                return True
-            else:
-                print("The files are different.")
-                for i, (line1, line2) in enumerate(zip(lines1, lines2), start=1):
-                    if line1 != line2:
-                        print(f"Difference found on line {i}:")
-                        print(f"File 1: {line1.strip()}")
-                        print(f"File 2: {line2.strip()}")
-                        break
-                if len(lines1) != len(lines2):
-                    print("One file has extra lines.")
-                return False
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        return False
+def compare_kmeans_outputs(seq_file, par_file):
+    seq_labels = load_labels(seq_file)
+    par_labels = load_labels(par_file)
 
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python compare_files.py <file1> <file2>")
-        sys.exit(1)
+    if len(seq_labels) != len(par_labels):
+        print("ERROR: Number of labels doesn't match.")
+        return
 
-    file1 = sys.argv[1]
-    file2 = sys.argv[2]
-    compare_files(file1, file2)
+    ari = adjusted_rand_score(seq_labels, par_labels)
+    nmi = normalized_mutual_info_score(seq_labels, par_labels)
+
+    print(f"Adjusted Rand Index (ARI): {ari:.4f}")
+    print(f"Normalized Mutual Information (NMI): {nmi:.4f}")
+
+# Usage
+compare_kmeans_outputs("result_seq", "result_omp")
 
 # python compare_module.py file1.txt file2.txt
