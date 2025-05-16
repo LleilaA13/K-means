@@ -359,10 +359,12 @@ int main(int argc, char *argv[])
 		}
 
 		// 2. Recalculates the centroids: calculates the mean within each cluster
-		zeroIntArray(pointsPerClass, K);
-		zeroFloatMatriz(auxCentroids, K, samples);
+		// zeroIntArray(pointsPerClass, K);
+		// zeroFloatMatriz(auxCentroids, K, samples);
+		memset(auxCentroids, 0, K * samples * sizeof(float));
+		memset(pointsPerClass, 0, K * sizeof(int));
 
-#pragma omp parallel for private(i, j, class) shared(data, classMap, auxCentroids, pointsPerClass, lines, samples, K)
+#pragma omp parallel for private(i, j, class)
 		for (i = 0; i < lines; i++)
 		{
 			class = classMap[i];
@@ -414,7 +416,7 @@ int main(int argc, char *argv[])
 	fflush(stdout);
 
 	// Log the time taken for computation
-	FILE *log = fopen("timing_log.txt", "a");
+	FILE *log = fopen("timing_log_omp.txt", "a");
 	if (log != NULL)
 	{
 		fprintf(log, "%f\n", end - start);

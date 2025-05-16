@@ -216,10 +216,10 @@ int main(int argc, char *argv[])
 	 *          algorithm stops.
 	 * argv[6]: Output file. Class assigned to each point of the input file.
 	 * */
-	if (argc != 7)
+	if (argc != 8)
 	{
 		fprintf(stderr, "EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
-		fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file]\n");
+		fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file] [Seed]\n");
 		fflush(stderr);
 		exit(-1);
 	}
@@ -253,6 +253,7 @@ int main(int argc, char *argv[])
 	int maxIterations = atoi(argv[3]);
 	int minChanges = (int)(lines * atof(argv[4]) / 100.0);
 	float maxThreshold = atof(argv[5]);
+	int seed = atoi(argv[7]);
 
 	int *centroidPos = (int *)calloc(K, sizeof(int));
 	float *centroids = (float *)calloc(K * samples, sizeof(float));
@@ -265,7 +266,7 @@ int main(int argc, char *argv[])
 	}
 
 	// Initial centrodis
-	srand(0);
+	srand(seed);
 	int i;
 	for (i = 0; i < K; i++)
 		centroidPos[i] = rand() % lines;
@@ -393,6 +394,13 @@ int main(int argc, char *argv[])
 	end = clock();
 	printf("\nComputation: %f seconds", (double)(end - start) / CLOCKS_PER_SEC);
 	fflush(stdout);
+
+	FILE *log = fopen("timing_log.txt", "a");
+	if (log != NULL)
+	{
+		fprintf(log, "%f\n", (double)(end - start) / CLOCKS_PER_SEC);
+		fclose(log);
+	}
 	//**************************************************
 	// START CLOCK***************************************
 	start = clock();
