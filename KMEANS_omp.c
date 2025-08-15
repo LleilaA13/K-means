@@ -173,9 +173,11 @@ float euclideanDistance(float *point, float *center, int samples)
 	float dist = 0.0;
 	for (int i = 0; i < samples; i++)
 	{
-		dist += (point[i] - center[i]) * (point[i] - center[i]);
+		// dist += (point[i] - center[i]) * (point[i] - center[i]);
+		dist = fmaf(point[i] - center[i], point[i] - center[i], dist);
 	}
-	dist = sqrt(dist);
+	// sqrt() is not necessary and increases the time of execution
+	// dist = sqrt(dist);
 	return (dist);
 }
 
@@ -226,10 +228,10 @@ int main(int argc, char *argv[])
 	 * argv[7]: Seed for random number generation.
 	 * */
 
-	if (argc != 8)
+	if (argc != 9)
 	{
 		fprintf(stderr, "EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
-		fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file] [Seed]\n");
+		fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file] [Seed] [Threads]\n");
 		fflush(stderr);
 		exit(-1);
 	}
@@ -264,6 +266,7 @@ int main(int argc, char *argv[])
 	int minChanges = (int)(lines * atof(argv[4]) / 100.0);
 	float maxThreshold = atof(argv[5]);
 	int seed = atoi(argv[7]);
+	int threads = atoi(argv[8]);
 
 	int *centroidPos = (int *)calloc(K, sizeof(int));
 	float *centroids = (float *)calloc(K * samples, sizeof(float));
@@ -327,7 +330,7 @@ int main(int argc, char *argv[])
 	 *
 	 */
 
-	omp_set_num_threads(8);
+	omp_set_num_threads(threads);
 
 	do
 	{
