@@ -1,0 +1,131 @@
+#!/bin/bash
+#SBATCH --job-name=kmeans_omp_performance
+#SBATCH --partition=students
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=8GB
+#SBATCH --time=00:10:00 
+#SBATCH --output=logs/slurm_omp_%j.out
+#SBATCH --error=logs/slurm_omp_%j.err
+
+# K-means OpenMP Performance Analysis for Sapienza HPC Cluster
+# This script tests OpenMP scaling from 1 to 8 threads
+
+echo "=== K-means OpenMP Performance Analysis ==="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node: $SLURM_NODELIST"
+echo "Cores available: $SLURM_CPUS_PER_TASK"
+echo "Memory: $SLURM_MEM_PER_NODE MB"
+echo "Working directory: $(pwd)"
+echo "Start time: $(date)"
+echo "============================================"
+
+# Create necessary directories
+mkdir -p logs results
+
+# Clear previous logs
+> logs/timing_log_omp.txt
+> logs/slurm_performance_results.txt
+
+# Log system information
+echo "=== System Information ===" >> logs/slurm_performance_results.txt
+echo "Node: $SLURM_NODELIST" >> logs/slurm_performance_results.txt
+echo "Date: $(date)" >> logs/slurm_performance_results.txt
+echo "CPU Info:" >> logs/slurm_performance_results.txt
+lscpu >> logs/slurm_performance_results.txt
+echo "" >> logs/slurm_performance_results.txt
+
+# Clean any existing binaries (they might be from different architecture)
+echo "Cleaning previous builds..."
+rm -f ./build/KMEANS_omp ./build/KMEANS_seq
+
+# Build the application
+echo "Building K-means OpenMP version for cluster..."
+mkdir -p ./build
+gcc -O3 -Wall -fopenmp ./src/KMEANS_omp.c -lm -o ./build/KMEANS_omp
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to build OpenMP version"
+    exit 1
+fi
+
+# Build sequential version for comparison
+echo "Building K-means sequential version for cluster..."
+gcc -O3 -Wall ./src/KMEANS.c -lm -o ./build/KMEANS_seq
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to build sequential version"
+    exit 1
+fi
+
+# Check if input file exists
+if [ ! -f "./data/input100D.inp" ]; then
+    echo "ERROR: Input file ./data/input100D.inp not found"
+    exit 1
+fi
+
+echo "=== Running Sequential Baseline ===" | tee -a ./logs/slurm_performance_results.txt
+
+# Run sequential version for baseline
+echo "Running sequential baseline..." | tee -a ./logs/slurm_performance_results.txt
+start_time=$(date +%s.%N)
+./build/KMEANS_seq ./data/input100D.inp 20 100 1.0 0.0001 ./results/result_seq_slurm.out 42
+end_time=$(date +%s.%N)
+seq_time=$(echo "$end_time - $start_time" | bc -l)
+echo "Sequential time: $seq_time seconds" | tee -a ./logs/slurm_performance_results.txt
+
+echo "" | tee -a ./logs/slurm_performance_results.txt
+echo "=== Running OpenMP Performance Tests ===" | tee -a ./logs/slurm_performance_results.txt
+echo "Threads\tTime(s)\tSpeedup\tEfficiency(%)" | tee -a ./logs/slurm_performance_results.txt
+echo "----------------------------------------" | tee -a ./logs/slurm_performance_results.txt
+
+# Test different thread counts (1, 2, 4, 8)
+for threads in 1 2 4 8; do
+    echo "Testing with $threads threads..."
+    
+    # Set OpenMP environment variables
+    export OMP_NUM_THREADS=$threads
+    export OMP_PROC_BIND=true
+    export OMP_PLACES=cores
+    
+    # Run the test 3 times and take the best time
+    best_time=999999
+    for run in 1 2 3; do
+        echo "  Run $run with $threads threads..."
+        start_time=$(date +%s.%N)
+        ./build/KMEANS_omp ./data/input100D.inp 20 100 1.0 0.0001 ./results/result_omp_${threads}t_run${run}_slurm.out 42 $threads
+        end_time=$(date +%s.%N)
+        current_time=$(echo "$end_time - $start_time" | bc -l)
+        
+        # Keep the best (minimum) time
+        if (( $(echo "$current_time < $best_time" | bc -l) )); then
+            best_time=$current_time
+        fi
+    done
+    
+    # Calculate speedup and efficiency
+    speedup=$(echo "scale=3; $seq_time / $best_time" | bc -l)
+    efficiency=$(echo "scale=1; $speedup * 100 / $threads" | bc -l)
+    
+    # Log results
+    echo "$threads\t$best_time\t$speedup\t$efficiency" | tee -a ./logs/slurm_performance_results.txt
+    echo "Best time with $threads threads: $best_time seconds (speedup: ${speedup}x, efficiency: ${efficiency}%)"
+done
+
+echo "" | tee -a ./logs/slurm_performance_results.txt
+echo "=== Performance Summary ===" | tee -a ./logs/slurm_performance_results.txt
+
+# Find optimal configuration
+optimal_line=$(tail -n +4 ./logs/slurm_performance_results.txt | head -n 4 | sort -k3 -nr | head -n 1)
+optimal_threads=$(echo "$optimal_line" | cut -f1)
+optimal_speedup=$(echo "$optimal_line" | cut -f3)
+
+echo "Best configuration: $optimal_threads threads with ${optimal_speedup}x speedup" | tee -a ./logs/slurm_performance_results.txt
+echo "Sequential baseline: $seq_time seconds" | tee -a ./logs/slurm_performance_results.txt
+
+echo "" | tee -a ./logs/slurm_performance_results.txt
+echo "Job completed at: $(date)" | tee -a ./logs/slurm_performance_results.txt
+
+echo "============================================"
+echo "Performance analysis complete!"
+echo "Results saved in: ./logs/slurm_performance_results.txt"
+echo "SLURM output: ./logs/slurm_omp_${SLURM_JOB_ID}.out"
+echo "Individual results: ./results/result_*_slurm.out"
