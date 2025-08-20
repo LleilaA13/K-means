@@ -55,7 +55,10 @@ help:
 	@echo
 	@echo "  make all           Build all versions"
 	@echo "  make debug         Build with debug info"
-	@echo "  make clean         Remove build files"
+	@echo "  make clean         Remove build files and clean results/logs"
+	@echo "  make clean-build   Remove only build files"
+	@echo "  make clean-results Remove only results directory"
+	@echo "  make clean-logs    Remove only logs directory"
 	@echo "  make setup         Create directory structure"
 	@echo
 
@@ -90,9 +93,29 @@ $(BUILDDIR):
 
 # Remove the build files
 clean:
+	@echo "Cleaning build, results, and logs directories..."
 	rm -rf $(BUILDDIR)/*
 	rm -f $(RESULTSDIR)/*
 	rm -f $(LOGSDIR)/*
+	@echo "✓ Clean complete!"
+
+# Remove only build files
+clean-build:
+	@echo "Cleaning build directory..."
+	rm -rf $(BUILDDIR)/*
+	@echo "✓ Build files removed!"
+
+# Remove only results files
+clean-results:
+	@echo "Cleaning results directory..."
+	rm -f $(RESULTSDIR)/*
+	@echo "✓ Results directory cleaned!"
+
+# Remove only log files
+clean-logs:
+	@echo "Cleaning logs directory..."
+	rm -f $(LOGSDIR)/*
+	@echo "✓ Logs directory cleaned!"
 
 # Compile in debug mode
 debug:

@@ -1,18 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=kmeans_pyt# Run the cluster analysis
-echo "Starting comprehensive K-means analysis..."
-$PYTHON_CMD cluster_analysis.py
-
-echo "========================================"
-echo "Python analysis completed at: $(date)"
-echo "Check ../../logs/cluster_performance_report.txt for results"lysis
+#SBATCH --job-name=kmeans_python_analysis
 #SBATCH --partition=students
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8GB
 #SBATCH --time=01:30:00
-#SBATCH --output=../../../../logs/slurm_python_%j.out
-#SBATCH --error=../../../../logs/slurm_python_%j.err
+#SBATCH --output=logs/slurm_python_%j.out
+#SBATCH --error=logs/slurm_python_%j.err
 
 # K-means Python Analysis Script for SLURM
 # Runs the comprehensive Python analysis tool
@@ -25,7 +19,7 @@ echo "Start time: $(date)"
 echo "========================================"
 
 # Create directories
-mkdir -p ../../logs ../../results
+mkdir -p logs results
 
 # Load Python module if available (common on HPC clusters)
 if command -v module &> /dev/null; then
@@ -51,4 +45,4 @@ $PYTHON_CMD scripts/cluster_analysis.py
 
 echo "========================================"
 echo "Python analysis completed at: $(date)"
-echo "Check ../../logs/cluster_performance_report.txt for results"
+echo "Check logs/cluster_performance_report.txt for results"

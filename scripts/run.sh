@@ -54,6 +54,7 @@ show_usage() {
     echo "ANALYSIS SCRIPTS:"
     echo "  log           - Performance analysis (log_module.py)"
     echo "  compare       - Results comparison (compare_module.py)"
+    echo "  verify        - Dynamic results verification (verify_results.py)"
     echo "  plot          - 2D visualization (plot2d_module.py)"
     echo "  quick         - Quick testing (quick_test.py)"
     echo ""
@@ -137,6 +138,10 @@ case "$CATEGORY" in
             "compare")
                 print_header "Running results comparison"
                 exec python3 scripts/analysis/compare_module.py "$@"
+                ;;
+            "verify"|"verify_results")
+                print_header "Running dynamic results verification"
+                exec python3 scripts/analysis/verify_results.py "$@"
                 ;;
             "plot"|"plot2d")
                 print_header "Running 2D visualization"
