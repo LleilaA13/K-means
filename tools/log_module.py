@@ -8,7 +8,7 @@ log_file = "timing_log_omp.txt"
 with open(log_file, "w"):
     pass
 
-# Run K-means 20 times with increasing seed
+# Run K-means 6 times with increasing seed
 print("Running K-means... ")
 for i in range(1, 7):
     print(f"■■", end="")
