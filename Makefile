@@ -13,23 +13,33 @@ DATADIR = data
 RESULTSDIR = results
 LOGSDIR = logs
 
-# Compilers (GCC-compatible approach for macOS)
-CC=clang
-OMPFLAG=-Xpreprocessor -fopenmp -lomp
+# Compilers - Auto-detect environment
+# Check if we're on macOS (local) or Linux (cluster)
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+    # macOS local development
+    CC=clang
+    OMPFLAG=-Xpreprocessor -fopenmp -lomp
+    LIBOMP_PATH=/opt/homebrew/opt/libomp
+    LDFLAGS=-L$(LIBOMP_PATH)/lib
+    CPPFLAGS=-I$(LIBOMP_PATH)/include
+else
+    # Linux cluster environment
+    CC=gcc
+    OMPFLAG=-fopenmp
+    LDFLAGS=
+    CPPFLAGS=
+endif
+
 MPICC=mpicc
 CUDACC=nvcc
-
-# OpenMP library paths
-LIBOMP_PATH=/opt/homebrew/opt/libomp
-LDFLAGS=-L$(LIBOMP_PATH)/lib
-CPPFLAGS=-I$(LIBOMP_PATH)/include
 
 # Flags for optimization and libs
 FLAGS=-O3 -Wall
 LIBS=-lm
 
 # Targets to build
-OBJS=$(BUILDDIR)/KMEANS_seq $(BUILDDIR)/KMEANS_omp $(BUILDDIR)/KMEANS_mpi $(BUILDDIR)/KMEANS_cuda
+OBJS=$(BUILDDIR)/KMEANS_seq $(BUILDDIR)/KMEANS_omp $(BUILDDIR)/KMEANS_mpi $(BUILDDIR)/KMEANS_mpi_omp $(BUILDDIR)/KMEANS_cuda
 
 # Rules. By default show help
 help:
@@ -51,6 +61,7 @@ help:
 	@echo "  make KMEANS_seq    Build only the sequential version"
 	@echo "  make KMEANS_omp    Build only the OpenMP version"
 	@echo "  make KMEANS_mpi    Build only the MPI version"
+	@echo "  make KMEANS_mpi_omp Build only the MPI+OpenMP hybrid version"
 	@echo "  make KMEANS_cuda   Build only the CUDA version"
 	@echo
 	@echo "  make all           Build all versions"
@@ -77,6 +88,9 @@ $(BUILDDIR)/KMEANS_omp: $(SRCDIR)/KMEANS_omp.c | $(BUILDDIR)
 $(BUILDDIR)/KMEANS_mpi: $(SRCDIR)/KMEANS_mpi.c | $(BUILDDIR)
 	$(MPICC) $(FLAGS) $(DEBUG) $< $(LIBS) -o $@
 
+$(BUILDDIR)/KMEANS_mpi_omp: $(SRCDIR)/KMEANS_mpi_omp.c | $(BUILDDIR)
+	$(MPICC) $(FLAGS) $(DEBUG) $(OMPFLAG) $< $(LIBS) -o $@
+
 $(BUILDDIR)/KMEANS_cuda: $(SRCDIR)/KMEANS_cuda.cu | $(BUILDDIR)
 	$(CUDACC) $(DEBUG) $< $(LIBS) -o $@
 
@@ -84,6 +98,7 @@ $(BUILDDIR)/KMEANS_cuda: $(SRCDIR)/KMEANS_cuda.cu | $(BUILDDIR)
 KMEANS_seq: $(BUILDDIR)/KMEANS_seq
 KMEANS_omp: $(BUILDDIR)/KMEANS_omp  
 KMEANS_mpi: $(BUILDDIR)/KMEANS_mpi
+KMEANS_mpi_omp: $(BUILDDIR)/KMEANS_mpi_omp
 KMEANS_cuda: $(BUILDDIR)/KMEANS_cuda
 
 # Ensure build directory exists
@@ -131,4 +146,19 @@ test-omp: $(BUILDDIR)/KMEANS_omp
 tree:
 	@echo "Current repository structure:"
 	@find . -type d -name ".git" -prune -o -type d -print | sort
+
+# Show compiler information for debugging
+compiler-info:
+	@echo "System Information:"
+	@echo "  OS: $(UNAME_S)"
+	@echo "  CC: $(CC)"
+	@echo "  MPICC: $(MPICC)"
+	@echo "  OpenMP flags: $(OMPFLAG)"
+	@echo "  LDFLAGS: $(LDFLAGS)"
+	@echo "  CPPFLAGS: $(CPPFLAGS)"
+	@echo ""
+	@echo "Compiler availability:"
+	@which $(CC) 2>/dev/null && echo "  ✓ $(CC) found" || echo "  ✗ $(CC) not found"
+	@which $(MPICC) 2>/dev/null && echo "  ✓ $(MPICC) found" || echo "  ✗ $(MPICC) not found"
+	@which $(CUDACC) 2>/dev/null && echo "  ✓ $(CUDACC) found" || echo "  ✗ $(CUDACC) not found"
 

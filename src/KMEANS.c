@@ -392,8 +392,19 @@ int main(int argc, char *argv[])
 
 	// END CLOCK*****************************************
 	end = clock();
-	printf("\nComputation: %f seconds", (double)(end - start) / CLOCKS_PER_SEC);
+	double computation_time = (double)(end - start) / CLOCKS_PER_SEC;
+	printf("\nComputation: %f seconds", computation_time);
 	fflush(stdout);
+
+	// Write timing to file
+	char timing_filename[256];
+	snprintf(timing_filename, sizeof(timing_filename), "%s.timing", argv[6]);
+	FILE *timing_fp = fopen(timing_filename, "w");
+	if (timing_fp != NULL)
+	{
+		fprintf(timing_fp, "computation_time: %f\n", computation_time);
+		fclose(timing_fp);
+	}
 
 	FILE *log = fopen("logs/timing_log_seq.txt", "a");
 	if (log != NULL)

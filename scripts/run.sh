@@ -47,6 +47,9 @@ show_usage() {
     echo ""
     echo "SLURM SCRIPTS:"
     echo "  omp_perf       - OpenMP performance test (slurm_omp_performance.sh)"
+    echo "  mpi_perf       - MPI performance test (slurm_mpi_performance.sh)"
+    echo "  mpi_omp_perf   - MPI+OpenMP hybrid test (slurm_mpi_omp_performance.sh)"
+    echo "  mpi_omp_multi  - MPI+OpenMP multi-node test (slurm_mpi_omp_multinode.sh)"
     echo "  comprehensive  - Multi-version comparison (slurm_comprehensive.sh)"
     echo "  cuda          - GPU performance test (slurm_cuda.sh)"
     echo "  python        - Python analysis runner (slurm_python.sh)"
@@ -61,6 +64,8 @@ show_usage() {
     echo "Examples:"
     echo "  $0 local run_kmeans"
     echo "  $0 slurm omp_perf"
+    echo "  $0 slurm mpi_perf"
+    echo "  $0 slurm mpi_omp_perf"
     echo "  $0 analysis log"
     echo "  $0 slurm comprehensive --help"
 }
@@ -108,6 +113,18 @@ case "$CATEGORY" in
             "omp_perf"|"omp_performance")
                 print_header "Submitting OpenMP performance test to SLURM"
                 exec sbatch scripts/slurm/slurm_omp_performance.sh
+                ;;
+            "mpi_perf"|"mpi_performance")
+                print_header "Submitting MPI performance test to SLURM"
+                exec sbatch scripts/slurm/slurm_mpi_performance.sh
+                ;;
+            "mpi_omp_perf"|"hybrid_perf")
+                print_header "Submitting MPI+OpenMP hybrid performance test to SLURM"
+                exec sbatch scripts/slurm/slurm_mpi_omp_performance.sh
+                ;;
+            "mpi_omp_multi"|"hybrid_multi")
+                print_header "Submitting MPI+OpenMP multi-node performance test to SLURM"
+                exec sbatch scripts/slurm/slurm_mpi_omp_multinode.sh
                 ;;
             "comprehensive"|"comp")
                 print_header "Submitting comprehensive analysis to SLURM"
