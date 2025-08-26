@@ -1,0 +1,43 @@
+# Build artifacts
+build/
+*.o
+*.exe
+*.out
+
+# Results and logs (optional - you might want to track some results)
+results/*.out
+results/*.txt
+logs/*.txt
+logs/*.log
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Backup files
+*.bak
+*~
+*.swp
+*.tmp
+
+# Compiled executables (if not in build/)
+KMEANS_seq
+KMEANS_omp
+KMEANS_mpi
+KMEANS_cuda
+kmeans
+kmeans_*
+
+# Performance analysis files
+*.prof
+*.perf
+perf.data*
+
+# Temporary files
+temp/
+tmp/
