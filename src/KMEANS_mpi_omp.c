@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
     MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
     int nthreads = 4;
     if (argc == 8)
-        nthreads = atoi(argv[7]);
+        nthreads = atoi(argv[8]);
     omp_set_num_threads(nthreads);
     // START CLOCK***************************************
     double start_time = MPI_Wtime();
@@ -229,7 +229,8 @@ int main(int argc, char *argv[])
      *          and the next, the maximum distance between centroids is less than this precision, the
      *          algorithm stops.
      * argv[6]: Output file. Class assigned to each point of the input file.
-     * argv[7]: Number of threads to use.
+     * argv[7]: Seed for random number generation.
+     * argv[8]: Number of threads to use.
      * */
     if ((argc != 8) && (argc != 7))
     {
@@ -297,7 +298,8 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Memory allocation error.\n");
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
-        srand(0); // Fixed seed for reproducibility
+        int seed = atoi(argv[7]);
+        srand(seed);
         int i;
         for (i = 0; i < K; i++)
             centroidPos[i] = rand() % lines;
