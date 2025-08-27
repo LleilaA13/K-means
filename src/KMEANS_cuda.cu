@@ -22,6 +22,15 @@
 #include <string.h>
 #include <float.h>
 #include <cuda.h>
+#include <sys/time.h>
+
+// Simple timing function to replace omp_get_wtime()
+double get_time()
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec + tv.tv_usec * 1e-6;
+}
 
 #define MAXLINE 2000
 #define MAXCAD 200
@@ -46,6 +55,11 @@
 		if (ok != cudaSuccess)                                                                        \
 			fprintf(stderr, "-- Error CUDA last in line %d: %s\n", __LINE__, cudaGetErrorString(ok)); \
 	}
+
+// Declare constant memory for frequently accessed parameters
+__constant__ int c_numPoints;  // Number of data points
+__constant__ int c_dimensions; // Number of dimensions per point
+__constant__ int c_K;		   // Number of clusters
 
 /*
 Function showFileError: It displays the corresponding error during file reading.
@@ -219,12 +233,80 @@ void zeroIntArray(int *array, int size)
 		array[i] = 0;
 }
 
+// CUDA constant memory for algorithm parameters
+__constant__ int c_numPoints;
+__constant__ int c_dimensions;
+__constant__ int c_K;
+
+// Host function to set constant memory
+void setConstantMemory(int numPoints, int dimensions, int K)
+{
+	CHECK_CUDA_CALL(cudaMemcpyToSymbol(c_numPoints, &numPoints, sizeof(int)));
+	CHECK_CUDA_CALL(cudaMemcpyToSymbol(c_dimensions, &dimensions, sizeof(int)));
+	CHECK_CUDA_CALL(cudaMemcpyToSymbol(c_K, &K, sizeof(int)));
+}
+
+// CUDA Kernel: Point Assignment
+__global__ void assignPointsToCentroids(
+	float *points,
+	float *centroids,
+	int *assignments,
+	int *changes)
+{
+	extern __shared__ float sharedCentroids[];
+
+	int pointIdx = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (pointIdx >= c_numPoints)
+		return;
+
+	// Load centroids into shared memory (collaborative loading)
+	for (int i = threadIdx.x; i < c_K * c_dimensions; i += blockDim.x)
+	{
+		sharedCentroids[i] = centroids[i];
+	}
+	__syncthreads();
+
+	float minDistance = FLT_MAX;
+	int bestCentroid = 0;
+	int oldAssignment = assignments[pointIdx];
+
+	// Calculate distance to each centroid
+	for (int k = 0; k < c_K; k++)
+	{
+		float distance = 0.0f;
+
+		// Calculate squared Euclidean distance (sqrt not needed for comparison)
+		for (int d = 0; d < c_dimensions; d++)
+		{
+			float diff = points[pointIdx * c_dimensions + d] -
+						 sharedCentroids[k * c_dimensions + d];
+			distance += diff * diff;
+		}
+		// No sqrt needed - squared distances preserve ordering
+
+		if (distance < minDistance)
+		{
+			minDistance = distance;
+			bestCentroid = k;
+		}
+	}
+
+	assignments[pointIdx] = bestCentroid + 1; // Convert to 1-based indexing
+
+	// Count changes using atomic operation
+	if (oldAssignment != bestCentroid + 1)
+	{
+		atomicAdd(changes, 1);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 
 	// START CLOCK***************************************
 	double start, end;
-	start = omp_get_wtime();
+	start = get_time();
 	//**************************************************
 	/*
 	 * PARAMETERS
@@ -308,7 +390,7 @@ int main(int argc, char *argv[])
 	printf("\tMaximum centroid precision: %f\n", maxThreshold);
 
 	// END CLOCK*****************************************
-	end = omp_get_wtime();
+	end = get_time();
 	printf("\nMemory allocation: %f seconds\n", end - start);
 	fflush(stdout);
 
@@ -316,7 +398,7 @@ int main(int argc, char *argv[])
 	CHECK_CUDA_CALL(cudaDeviceSynchronize());
 	//**************************************************
 	// START CLOCK***************************************
-	start = omp_get_wtime();
+	start = get_time();
 	//**************************************************
 	char *outputMsg = (char *)calloc(10000, sizeof(char));
 	char line[100];
@@ -345,33 +427,47 @@ int main(int argc, char *argv[])
 	 *
 	 */
 
+	// Set constant memory for CUDA kernels
+	setConstantMemory(lines, samples, K);
+
+	// Allocate GPU memory
+	float *d_data, *d_centroids;
+	int *d_classMap, *d_changes;
+
+	CHECK_CUDA_CALL(cudaMalloc(&d_data, lines * samples * sizeof(float)));
+	CHECK_CUDA_CALL(cudaMalloc(&d_centroids, K * samples * sizeof(float)));
+	CHECK_CUDA_CALL(cudaMalloc(&d_classMap, lines * sizeof(int)));
+	CHECK_CUDA_CALL(cudaMalloc(&d_changes, sizeof(int)));
+
+	// Copy initial data to GPU
+	CHECK_CUDA_CALL(cudaMemcpy(d_data, data, lines * samples * sizeof(float), cudaMemcpyHostToDevice));
+	CHECK_CUDA_CALL(cudaMemcpy(d_classMap, classMap, lines * sizeof(int), cudaMemcpyHostToDevice));
+
+	// Configure kernel launch parameters
+	dim3 blockSize(256);
+	dim3 gridSize((lines + blockSize.x - 1) / blockSize.x);
+	size_t sharedMemSize = K * samples * sizeof(float);
+
 	do
 	{
 		it++;
 
-		// 1. Calculate the distance from each point to the centroid
-		// Assign each point to the nearest centroid.
-		changes = 0;
-		for (i = 0; i < lines; i++)
-		{
-			class = 1;
-			minDist = FLT_MAX;
-			for (j = 0; j < K; j++)
-			{
-				dist = euclideanDistance(&data[i * samples], &centroids[j * samples], samples);
+		// Copy current centroids to GPU
+		CHECK_CUDA_CALL(cudaMemcpy(d_centroids, centroids, K * samples * sizeof(float), cudaMemcpyHostToDevice));
 
-				if (dist < minDist)
-				{
-					minDist = dist;
-					class = j + 1;
-				}
-			}
-			if (classMap[i] != class)
-			{
-				changes++;
-			}
-			classMap[i] = class;
-		}
+		// Reset changes counter
+		int zero = 0;
+		CHECK_CUDA_CALL(cudaMemcpy(d_changes, &zero, sizeof(int), cudaMemcpyHostToDevice));
+
+		// 1. CUDA Kernel: Calculate distances and assign points to centroids
+		assignPointsToCentroids<<<gridSize, blockSize, sharedMemSize>>>(
+			d_data, d_centroids, d_classMap, d_changes);
+		CHECK_CUDA_LAST();
+		CHECK_CUDA_CALL(cudaDeviceSynchronize());
+
+		// Copy results back to host
+		CHECK_CUDA_CALL(cudaMemcpy(classMap, d_classMap, lines * sizeof(int), cudaMemcpyDeviceToHost));
+		CHECK_CUDA_CALL(cudaMemcpy(&changes, d_changes, sizeof(int), cudaMemcpyDeviceToHost));
 
 		// 2. Recalculates the centroids: calculates the mean within each cluster
 		zeroIntArray(pointsPerClass, K);
@@ -411,6 +507,12 @@ int main(int argc, char *argv[])
 
 	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > maxThreshold));
 
+	// Free GPU memory
+	CHECK_CUDA_CALL(cudaFree(d_data));
+	CHECK_CUDA_CALL(cudaFree(d_centroids));
+	CHECK_CUDA_CALL(cudaFree(d_classMap));
+	CHECK_CUDA_CALL(cudaFree(d_changes));
+
 	/*
 	 *
 	 * STOP HERE: DO NOT CHANGE THE CODE BELOW THIS POINT
@@ -422,12 +524,12 @@ int main(int argc, char *argv[])
 	CHECK_CUDA_CALL(cudaDeviceSynchronize());
 
 	// END CLOCK*****************************************
-	end = omp_get_wtime();
+	end = get_time();
 	printf("\nComputation: %f seconds", end - start);
 	fflush(stdout);
 	//**************************************************
 	// START CLOCK***************************************
-	start = omp_get_wtime();
+	start = get_time();
 	//**************************************************
 
 	if (changes <= minChanges)
@@ -461,7 +563,7 @@ int main(int argc, char *argv[])
 	free(auxCentroids);
 
 	// END CLOCK*****************************************
-	end = omp_get_wtime();
+	end = get_time();
 	printf("\n\nMemory deallocation: %f seconds\n", end - start);
 	fflush(stdout);
 	//***************************************************/
