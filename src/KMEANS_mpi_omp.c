@@ -200,7 +200,7 @@ void zeroIntArray(int *array, int size)
 int main(int argc, char *argv[])
 {
     // Initialize MPI:
-    int i;
+    int i, j; // Declare loop variables at function scope
     int rank, size;
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
     int maxIterations = atoi(argv[3]);
     int minChanges = (int)(lines * atof(argv[4]) / 100.0);
     float maxThreshold = atof(argv[5]);
-    
+
     float *centroids = (float *)calloc(K * samples, sizeof(float));
     int *centroidPos = NULL;
     int *classMap = NULL;
@@ -300,7 +300,6 @@ int main(int argc, char *argv[])
         }
         int seed = atoi(argv[7]);
         srand(seed);
-        int i;
         for (i = 0; i < K; i++)
             centroidPos[i] = rand() % lines;
         initCentroids(data, centroids, centroidPos, samples, K);
@@ -319,7 +318,6 @@ int main(int argc, char *argv[])
     char *outputMsg = (char *)calloc(10000, sizeof(char));
     char line[100];
 
-    int j;
     int class;
     float dist, minDist;
     int it = 0;
@@ -391,8 +389,7 @@ int main(int argc, char *argv[])
         local_changes = 0;
 
         // Parallelize assignment step
-        int i;
-        #pragma omp parallel for private(j, class, minDist, dist) reduction(+:local_changes)
+#pragma omp parallel for private(i, j, class, minDist, dist) reduction(+ : local_changes)
         for (i = 0; i < local_lines; i++)
         {
             class = 1;
@@ -427,16 +424,15 @@ int main(int argc, char *argv[])
         memset(local_auxCentroids, 0, K * samples * sizeof(float)); // Initialize local auxiliary centroids
 
         // Parallelize local centroid accumulation
-        int i;
-        #pragma omp parallel for private(j, class)
+#pragma omp parallel for private(i, j, class)
         for (i = 0; i < local_lines; i++)
         {
             class = local_classMap[i];
-            #pragma omp atomic
+#pragma omp atomic
             local_pointsPerClass[class - 1] += 1;
             for (j = 0; j < samples; j++)
             {
-                #pragma omp atomic
+#pragma omp atomic
                 local_auxCentroids[(class - 1) * samples + j] += local_data[i * samples + j];
             }
         }
@@ -445,8 +441,7 @@ int main(int argc, char *argv[])
         MPI_Allreduce(local_auxCentroids, auxCentroids, K * samples, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 
 // Parallelize centroid update
-#pragma omp parallel for private(j)
-        int i;
+#pragma omp parallel for private(i, j)
         for (i = 0; i < K; i++)
         {
             for (j = 0; j < samples; j++)
@@ -458,7 +453,6 @@ int main(int argc, char *argv[])
 
         maxDist = FLT_MIN;
 
-        int i;
         for (i = 0; i < K; i++)
         {
             distCentroids[i] = euclideanDistance(&centroids[i * samples], &auxCentroids[i * samples], samples);
@@ -569,17 +563,28 @@ int main(int argc, char *argv[])
     }
 
     // Free memory
-    if (data) free(data);
-    if (rank == 0 && classMap) free(classMap);
-    if (rank == 0 && centroidPos) free(centroidPos);
-    if (centroids) free(centroids);
-    if (distCentroids) free(distCentroids);
-    if (pointsPerClass) free(pointsPerClass);
-    if (auxCentroids) free(auxCentroids);
-    if (local_data) free(local_data);
-    if (local_classMap) free(local_classMap);
-    if (local_pointsPerClass) free(local_pointsPerClass);
-    if (local_auxCentroids) free(local_auxCentroids);
+    if (data)
+        free(data);
+    if (rank == 0 && classMap)
+        free(classMap);
+    if (rank == 0 && centroidPos)
+        free(centroidPos);
+    if (centroids)
+        free(centroids);
+    if (distCentroids)
+        free(distCentroids);
+    if (pointsPerClass)
+        free(pointsPerClass);
+    if (auxCentroids)
+        free(auxCentroids);
+    if (local_data)
+        free(local_data);
+    if (local_classMap)
+        free(local_classMap);
+    if (local_pointsPerClass)
+        free(local_pointsPerClass);
+    if (local_auxCentroids)
+        free(local_auxCentroids);
 
     // END CLOCK*****************************************
     end_time = MPI_Wtime();

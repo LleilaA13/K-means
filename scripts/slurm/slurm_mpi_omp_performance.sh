@@ -3,7 +3,7 @@
 #SBATCH --partition=multicore
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=64
-#SBATCH --time=06:00:00
+#SBATCH --time=01:00:00
 #SBATCH --output=logs/slurm_mpi_omp_%j.out
 #SBATCH --error=logs/slurm_mpi_omp_%j.err
 
@@ -24,14 +24,8 @@ INPUT_DATASET="data/input100D2.inp"
 # ============================================
 # MPI+OpenMP HYBRID CONFIGURATION: Single node with 64 cores
 # ============================================
-# Test configurations: "processes:threads" format
-# IMPORTANT: Single node with max 64 cores total
-# Total threads = processes × threads ≤ 64
-HYBRID_CONFIGS="1:1 1:2 1:4 1:8 1:16 1:32 1:64 2:1 2:2 2:4 2:8 2:16 2:32 4:1 4:2 4:4 4:8 4:16 8:1 8:2 8:4 8:8 16:1 16:2 16:4 32:1 32:2 64:1"
-# Note: Configurations must satisfy processes × threads ≤ 64
-# Alternative examples:
-# HYBRID_CONFIGS="1:1 1:8 1:16 1:32 1:64 8:8 16:4 32:2 64:1"  # Powers of 2 focus
-# HYBRID_CONFIGS="8:8 16:4 32:2 64:1"                         # High core count only
+# Test configurations: "processes:threads" format (theoretically reasonable only)
+HYBRID_CONFIGS="1:1 1:4 1:8 1:16 1:32 1:64 2:8 2:16 2:32 4:4 4:8 4:16 8:2 8:4 8:8 16:2 16:4 32:2 64:1"
 
 # ============================================
 # SLURM CONFIGURATION: Single node multicore partition
@@ -44,16 +38,13 @@ HYBRID_CONFIGS="1:1 1:2 1:4 1:8 1:16 1:32 1:64 2:1 2:2 2:4 2:8 2:16 2:32 4:1 4:2
 #   Partition: multicore (--partition=multicore)
 #   Total cores available: 1 × 64 = 64
 
-echo "=== K-means MPI+OpenMP Hybrid Performance Analysis ==="
+echo "=== K-means MPI+OpenMP Performance Test ==="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $SLURM_NODELIST"
-echo "Number of nodes: $SLURM_NNODES"
-echo "Cores per task: $SLURM_CPUS_PER_TASK"
-echo "Total cores available: $SLURM_CPUS_PER_TASK"
-echo "Memory: $SLURM_MEM_PER_NODE MB"
+echo "Cores: $SLURM_CPUS_PER_TASK"
 echo "Dataset: $INPUT_DATASET"
-echo "Hybrid configurations to test: $HYBRID_CONFIGS"
-echo "Start time: $(date)"
+echo "Configurations: $(echo $HYBRID_CONFIGS | wc -w) to test"
+echo "Start: $(date)"
 echo "============================================"
 
 # Create necessary directories
@@ -133,13 +124,12 @@ for config in $HYBRID_CONFIGS; do
     threads=$(echo $config | cut -d':' -f2)
     total_threads=$((processes * threads))
     
-    # Validate configuration for single node
+    # Skip invalid configurations
     if [ $total_threads -gt $SLURM_CPUS_PER_TASK ]; then
-        echo "Warning: Skipping config $config (total threads=$total_threads exceeds available cores=$SLURM_CPUS_PER_TASK)"
         continue
     fi
     
-    echo "Testing with $processes MPI processes and $threads OpenMP threads each (total: $total_threads threads)..."
+    echo "Testing $config ($total_threads threads)..."
     
     # Set OpenMP environment variables
     export OMP_NUM_THREADS=$threads
@@ -150,10 +140,9 @@ for config in $HYBRID_CONFIGS; do
     export OMP_SCHEDULE=dynamic,64
     export OMP_WAIT_POLICY=active
     
-    # Run the test 3 times and take the best time
+    # Run 3 times, keep best time
     best_time=999999
     for run in 1 2 3; do
-        echo "  Run $run with $processes processes x $threads threads..."
         
         # Define output and timing files
         output_file="results/result_${DATASET_NAME}_mpi_omp_${processes}p_${threads}t_run${run}_slurm.out"
@@ -163,22 +152,19 @@ for config in $HYBRID_CONFIGS; do
         srun --partition=multicore --nodes=1 --cpus-per-task=$SLURM_CPUS_PER_TASK \
              mpirun -np $processes --oversubscribe \
              ./build/KMEANS_mpi_omp "$INPUT_DATASET" 20 100 1.0 0.0001 \
-             "$output_file" 42
+             "$output_file" 42 $threads
         
-        # Read computation time from timing file
+        # Read timing
         if [ -f "$timing_file" ]; then
             current_time=$(grep "computation_time:" "$timing_file" | cut -d' ' -f2)
         else
-            echo "    ERROR: Timing file $timing_file not found"
             continue
         fi
         
-        # Keep the best (minimum) time
+        # Keep best time
         if (( $(echo "$current_time < $best_time" | bc -l) )); then
             best_time=$current_time
         fi
-        
-        echo "    Computation time: $current_time seconds"
     done
     
     # Calculate speedup and efficiency
@@ -187,36 +173,22 @@ for config in $HYBRID_CONFIGS; do
     
     # Log results
     printf "%-12s %-8s %-10s %-12.3f %-8.3f %-12.1f\n" "$config" "$total_threads" "$processes" "$best_time" "$speedup" "$efficiency" | tee -a logs/slurm_mpi_omp_performance_results.txt
-    echo "Best computation time with $config configuration: $best_time seconds (speedup: ${speedup}x, efficiency: ${efficiency}%)"
 done
 
 echo "" | tee -a logs/slurm_mpi_omp_performance_results.txt
 echo "=== Performance Summary ===" | tee -a logs/slurm_mpi_omp_performance_results.txt
 
-# Find optimal configuration
+# Find best configuration
 optimal_line=$(tail -n +4 logs/slurm_mpi_omp_performance_results.txt | grep -E "^[0-9]" | sort -k5 -nr | head -n 1)
 if [ -n "$optimal_line" ]; then
     optimal_config=$(echo "$optimal_line" | awk '{print $1}')
     optimal_speedup=$(echo "$optimal_line" | awk '{print $5}')
-    echo "Best configuration: $optimal_config with ${optimal_speedup}x speedup" | tee -a logs/slurm_mpi_omp_performance_results.txt
+    echo "Best: $optimal_config with ${optimal_speedup}x speedup" | tee -a logs/slurm_mpi_omp_performance_results.txt
 fi
-echo "Sequential baseline (computation only): $seq_time seconds" | tee -a logs/slurm_mpi_omp_performance_results.txt
+echo "Sequential baseline: $seq_time seconds" | tee -a logs/slurm_mpi_omp_performance_results.txt
 
-echo "" | tee -a logs/slurm_mpi_omp_performance_results.txt
-echo "=== Hybrid Scaling Analysis ===" | tee -a logs/slurm_mpi_omp_performance_results.txt
-echo "Guidelines for single-node execution:" | tee -a logs/slurm_mpi_omp_performance_results.txt
-echo "- Multicore partition: single node only" | tee -a logs/slurm_mpi_omp_performance_results.txt
-echo "- Total threads ≤ cores_per_node = $SLURM_CPUS_PER_TASK" | tee -a logs/slurm_mpi_omp_performance_results.txt
-echo "- Formula: processes × threads ≤ $SLURM_CPUS_PER_TASK" | tee -a logs/slurm_mpi_omp_performance_results.txt
-
-echo "" | tee -a logs/slurm_mpi_omp_performance_results.txt
-echo "Job completed at: $(date)" | tee -a logs/slurm_mpi_omp_performance_results.txt
+echo "Job completed: $(date)" | tee -a logs/slurm_mpi_omp_performance_results.txt
 
 echo "============================================"
-echo "Performance analysis complete!"
-echo "Dataset tested: $INPUT_DATASET"
-echo "Results saved in: logs/slurm_mpi_omp_performance_results.txt"
-echo "SLURM output: logs/slurm_mpi_omp_${SLURM_JOB_ID}.out"
-echo "Individual results: results/result_${DATASET_NAME}_*_slurm.out"
-echo "Timing files: results/result_${DATASET_NAME}_*.timing"
-echo "NOTE: Performance statistics based on algorithm computation time from .timing files"
+echo "Performance test complete!"
+echo "Results: logs/slurm_mpi_omp_performance_results.txt"
