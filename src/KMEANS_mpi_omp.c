@@ -563,28 +563,18 @@ int main(int argc, char *argv[])
     }
 
     // Free memory
-    if (data)
-        free(data);
-    if (rank == 0 && classMap)
-        free(classMap);
-    if (rank == 0 && centroidPos)
-        free(centroidPos);
-    if (centroids)
-        free(centroids);
-    if (distCentroids)
-        free(distCentroids);
-    if (pointsPerClass)
-        free(pointsPerClass);
-    if (auxCentroids)
-        free(auxCentroids);
-    if (local_data)
-        free(local_data);
-    if (local_classMap)
-        free(local_classMap);
-    if (local_pointsPerClass)
-        free(local_pointsPerClass);
-    if (local_auxCentroids)
-        free(local_auxCentroids);
+
+    free(data);
+    free(classMap);
+    free(centroidPos);
+    free(centroids);
+    free(distCentroids);
+    free(pointsPerClass);
+    free(auxCentroids);
+    free(local_data);
+    free(local_classMap);
+    free(local_pointsPerClass);
+    free(local_auxCentroids);
 
     // END CLOCK*****************************************
     end_time = MPI_Wtime();
