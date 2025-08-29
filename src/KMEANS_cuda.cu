@@ -492,6 +492,8 @@ int main(int argc, char *argv[])
 		CHECK_CUDA_CALL(cudaMemcpyAsync(classMap, d_classMap, lines * sizeof(int), cudaMemcpyDeviceToHost, stream));
 		CHECK_CUDA_CALL(cudaMemcpyAsync(&changes, d_changes, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
+		CHECK_CUDA_CALL(cudaStreamSynchronize(stream)); // Per ora questa serve perché non fai tutti i calcoli ma poi la puoi levare
+
 		// 2. Recalculates the centroids: calculates the mean within each cluster
 		zeroIntArray(pointsPerClass, K);
 		zeroFloatMatriz(auxCentroids, K, samples);
