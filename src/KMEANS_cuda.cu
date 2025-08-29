@@ -427,6 +427,29 @@ int main(int argc, char *argv[])
 	 *
 	 */
 
+	/* -------------------- Ciao daniel sono riccardo ecco un pò di chicche tvb ----------------------------- */
+	/*
+	cudaEvent_t start, stop; // Usa i cudaEvents per prendere i tempi all'interno del programma perché sono il modo migliore e più preciso per beccarti il runtime dei tuoi kernel. Ritornano un valore in millisecondi e ti posso assicurare che sono precisissimi. Di seguito un esempio su come si usano
+
+	CHECK_CUDA(cudaEventCreate(&start))
+	CHECK_CUDA(cudaEventCreateWithFlags(&stop, cudaEventBlockingSync))
+
+	CHECK_CUDA(cudaEventRecord(start, stream))
+	... kernelozzo <<< ... >>> (argomenti del kernelozzo)
+	CHECK_CUDA(cudaEventRecord(stop, stream))
+	CHECK_CUDA(cudaEventSynchronize(stop))
+
+	float elapsedTime;
+	CHECK_CUDA(cudaEventElapsedTime(&elapsedTime, start, stop))
+
+	*/
+
+
+
+
+	cudaStream_t stream; // Creati il tuo stream di esecuzione così ti fai la pipeline personalizzata sulla scheda e i trasferimenti in memoria sono fatti meglio perché la scheda usa le mempool. Le operazioni sugli stream sono SERIALI per definizione quindi non ti serve usare le synchronize perché vengono eseguite nell'ordine in cui sono chiamate. Servirà solo una cudaStreamSynchronize(stream) a fine loop te l'ho già messa
+	CHECK_CUDA_CALL(cudaStreamCreate(&stream));
+
 	// Set constant memory for CUDA kernels
 	setConstantMemory(lines, samples, K);
 
@@ -434,14 +457,14 @@ int main(int argc, char *argv[])
 	float *d_data, *d_centroids;
 	int *d_classMap, *d_changes;
 
-	CHECK_CUDA_CALL(cudaMalloc(&d_data, lines * samples * sizeof(float)));
-	CHECK_CUDA_CALL(cudaMalloc(&d_centroids, K * samples * sizeof(float)));
-	CHECK_CUDA_CALL(cudaMalloc(&d_classMap, lines * sizeof(int)));
-	CHECK_CUDA_CALL(cudaMalloc(&d_changes, sizeof(int)));
+	CHECK_CUDA_CALL(cudaMallocAsync(&d_data, lines * samples * sizeof(float), stream)); // Queste malloc e memcpy "async" sono uguali alle altre malloc ma vengono eseguite sul tuo stream, quindi il ritorno è asincrono e non sono bloccanti. Non hai problemi perché tutte le operazioni sono nella tuo stream quindi anche se il ritorno è asincrono sulla scheda l'esecuzione è seriale (nell'ordine in cui le hai mandate)
+	CHECK_CUDA_CALL(cudaMallocAsync(&d_centroids, K * samples * sizeof(float), stream));
+	CHECK_CUDA_CALL(cudaMallocAsync(&d_classMap, lines * sizeof(int), stream));
+	CHECK_CUDA_CALL(cudaMallocAsync(&d_changes, sizeof(int), stream));
 
 	// Copy initial data to GPU
-	CHECK_CUDA_CALL(cudaMemcpy(d_data, data, lines * samples * sizeof(float), cudaMemcpyHostToDevice));
-	CHECK_CUDA_CALL(cudaMemcpy(d_classMap, classMap, lines * sizeof(int), cudaMemcpyHostToDevice));
+	CHECK_CUDA_CALL(cudaMemcpyAsync(d_data, data, lines * samples * sizeof(float), cudaMemcpyHostToDevice, stream));
+	CHECK_CUDA_CALL(cudaMemcpyAsync(d_classMap, classMap, lines * sizeof(int), cudaMemcpyHostToDevice, stream));
 
 	// Configure kernel launch parameters
 	dim3 blockSize(256);
@@ -453,21 +476,21 @@ int main(int argc, char *argv[])
 		it++;
 
 		// Copy current centroids to GPU
-		CHECK_CUDA_CALL(cudaMemcpy(d_centroids, centroids, K * samples * sizeof(float), cudaMemcpyHostToDevice));
+		CHECK_CUDA_CALL(cudaMemcpyAsync(d_centroids, centroids, K * samples * sizeof(float), cudaMemcpyHostToDevice, stream));
 
 		// Reset changes counter
 		int zero = 0;
-		CHECK_CUDA_CALL(cudaMemcpy(d_changes, &zero, sizeof(int), cudaMemcpyHostToDevice));
+		CHECK_CUDA_CALL(cudaMemcpyAsync(d_changes, &zero, sizeof(int), cudaMemcpyHostToDevice, stream));
 
 		// 1. CUDA Kernel: Calculate distances and assign points to centroids
-		assignPointsToCentroids<<<gridSize, blockSize, sharedMemSize>>>(
-			d_data, d_centroids, d_classMap, d_changes);
-		CHECK_CUDA_LAST();
-		CHECK_CUDA_CALL(cudaDeviceSynchronize());
+		assignPointsToCentroids<<<gridSize, blockSize, sharedMemSize, stream>>>(
+			d_data, d_centroids, d_classMap, d_changes); // Metti lo stream come ultimo argomento al kernel e anche quello viene eseguito sullo stream
+		// CHECK_CUDA_LAST(); // Questa infatti non ti serve
+		// CHECK_CUDA_CALL(cudaDeviceSynchronize()); // Manco questa te serve (te ne ho messa una a fine loop)
 
 		// Copy results back to host
-		CHECK_CUDA_CALL(cudaMemcpy(classMap, d_classMap, lines * sizeof(int), cudaMemcpyDeviceToHost));
-		CHECK_CUDA_CALL(cudaMemcpy(&changes, d_changes, sizeof(int), cudaMemcpyDeviceToHost));
+		CHECK_CUDA_CALL(cudaMemcpyAsync(classMap, d_classMap, lines * sizeof(int), cudaMemcpyDeviceToHost, stream));
+		CHECK_CUDA_CALL(cudaMemcpyAsync(&changes, d_changes, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
 		// 2. Recalculates the centroids: calculates the mean within each cluster
 		zeroIntArray(pointsPerClass, K);
@@ -483,7 +506,8 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		for (i = 0; i < K; i++)
+
+	for (i = 0; i < K; i++)
 		{
 			for (j = 0; j < samples; j++)
 			{
@@ -505,13 +529,16 @@ int main(int argc, char *argv[])
 		sprintf(line, "\n[%d] Cluster changes: %d\tMax. centroid distance: %f", it, changes, maxDist);
 		outputMsg = strcat(outputMsg, line);
 
+
+		CHECK_CUDA_CALL(cudaStreamSynchronize(stream));
 	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > maxThreshold));
 
 	// Free GPU memory
-	CHECK_CUDA_CALL(cudaFree(d_data));
-	CHECK_CUDA_CALL(cudaFree(d_centroids));
-	CHECK_CUDA_CALL(cudaFree(d_classMap));
-	CHECK_CUDA_CALL(cudaFree(d_changes));
+	CHECK_CUDA_CALL(cudaFreeAsync(d_data, stream));
+	CHECK_CUDA_CALL(cudaFreeAsync(d_centroids, stream));
+	CHECK_CUDA_CALL(cudaFreeAsync(d_classMap, stream));
+	CHECK_CUDA_CALL(cudaFreeAsync(d_changes, stream));
+	CHECK_CUDA_CALL(cudaStreamDestroy(stream));
 
 	/*
 	 *
