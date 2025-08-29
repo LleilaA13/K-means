@@ -4,6 +4,9 @@ build/
 *.exe
 *.out
 
+# Data files (large datasets)
+data/*.inp
+
 # Results and logs (optional - you might want to track some results)
 results/*.out
 results/*.txt

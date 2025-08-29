@@ -25,7 +25,7 @@ INPUT_DATASET="data/input100D2.inp"
 # MPI+OpenMP HYBRID CONFIGURATION: Single node with 64 cores
 # ============================================
 # Test configurations: "processes:threads" format (theoretically reasonable only)
-HYBRID_CONFIGS="1:1 1:4 1:8 1:16 1:32 1:64 2:8 2:16 2:32 4:4 4:8 4:16 8:2 8:4 8:8 16:2 16:4 32:2 64:1"
+HYBRID_CONFIGS="1:1 1:4 1:8 1:16 1:32 1:64 2:8 2:16 2:32 4:4 4:8 4:16"
 
 # ============================================
 # SLURM CONFIGURATION: Single node multicore partition
