@@ -50,7 +50,7 @@ show_usage() {
     echo "  mpi_perf       - MPI performance test (slurm_mpi_performance.sh)"
     echo "  mpi_omp_perf   - MPI+OpenMP hybrid test (slurm_mpi_omp_performance.sh)"
     echo "  mpi_omp_multi  - MPI+OpenMP multi-node test (slurm_mpi_omp_multinode.sh)"
-    echo "  comprehensive  - Multi-version comparison (slurm_comprehensive.sh)"
+    echo "  comprehensive  - Multi-version comparison (comprehensive_kmeans_test.sh)"
     echo "  comp_test      - Comprehensive K-means testing (comprehensive_kmeans_test.sh)"
     echo "  cuda          - GPU performance test (slurm_cuda.sh)"
     echo "  python        - Python analysis runner (slurm_python.sh)"
@@ -132,7 +132,7 @@ case "$CATEGORY" in
                 ;;
             "comprehensive"|"comp")
                 print_header "Submitting comprehensive analysis to SLURM"
-                exec sbatch scripts/slurm/slurm_comprehensive.sh
+                exec sbatch scripts/slurm/comprehensive_kmeans_test.sh
                 ;;
             "comp_test"|"comprehensive_test")
                 print_header "Submitting comprehensive K-means testing to SLURM"

@@ -26,6 +26,7 @@ echo "============================================"
 
 # Datasets to test (larger datasets as requested)
 DATASETS=(
+    "data/input100D.inp"
     "data/input100D2.inp"
     "data/200k_100.inp" 
     "data/400k_100.inp"
@@ -46,7 +47,6 @@ SEED=42
 MPI_PROCESSES=(1 2 4 8 16 32 64)
 OMP_THREADS=(1 2 4 8 16 32 64)
 MPI_OMP_CONFIGS=(
-    "1:1" "1:2" "1:4" "1:8" "1:16" "1:32" "1:64"
     "2:1" "2:2" "2:4" "2:8" "2:16" "2:32"
     "4:1" "4:2" "4:4" "4:8" "4:16"
 )
