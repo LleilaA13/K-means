@@ -44,28 +44,33 @@ __global__ void reduce(float* inputs, unsigned int input_size, float* outputs)
             i += blockDim.x * gridDim.x)
         sum = max(sum, inputs[i]); // Questo for serve in caso non abbiate abbastanza thread per parallelizzare, e quindi ogni thread deve gestire più elementi. Per fortuna non è il vostro caso, quindi questo for in realtà di riduce semplicemente a sum += inputs[i] (fate la prova togliendolo per vedere che effettivamente l'algoritmo funziona lo stesso)
 
-    __shared__ float shared[32];
+    __shared__ float shared[32]; // Qui la shared mem è fissa a 32 perché in un blocco possono esserci al massimo 1024 thread, e siccome la riduzione è a livello warp (32 thread) ogni blocco potrà eseguire al massimo 32 riduzioni
+
+    // queste sono variabili che servono per l'algoritmo. Bonus tips se capite a cosa servono ;)
     unsigned int lane = threadIdx.x % warpSize;
     unsigned int wid = threadIdx.x / warpSize;
 
-    sum = warp_reduce(sum);
+    sum = warp_reduce(sum); // prima chiamata della riduzione
     if (lane == 0)
-        shared[wid] = sum;
+        shared[wid] = sum; // se sono il thread 0 all'interno del warp scrivo in shared memory
 
     // Wait for all partial reductions
-    __syncthreads();
+    __syncthreads(); // synchtreads() d'obbligo
 
-    sum = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
+    sum = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0; // bonus tip se capisci a cosa serve questa ;)
     if (wid == 0)
-        sum = warp_reduce(sum);
+        sum = warp_reduce(sum); // Seconda chiamata alla reduce per fare in modo che la riduzione venga fatta all'interno del blocco (ricorda che warp_reduce riduce all'interno di ogni warp)
 
     if (threadIdx.x == 0)
-        outputs[blockIdx.x] = sum;
+        outputs[blockIdx.x] = sum; // Il thread 0 di ogni blocco scrive in global memory il risultato della riduzione di questo blocco
 }
 
 
 int main(int argc, char** argv)
 {
+  // Qui il main per testare che effettivamente funzioni! leggi i commenti bene per capire come impostare questa operazione
+  // ATTENZIONE: è cruciale che sia chiaro con quanti blocchi/thread chiamare questa operazione, se sbagli quello non funziona niente. Consiglio
+  // di leggere il pdf che ho linkato nel file KMEANS_cuda.cu per capire bene la logica dietro questa implementazione
   float h_array = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
                    1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
                    1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
@@ -89,8 +94,8 @@ int main(int argc, char** argv)
   CHECK_CUDA_CALL(cudaMemcpy(d_array, &array, 64 * sizeof(float), cudaMemcpyHostToDevice))
   CHECK_CUDA_CALL(cudaMemset(d_res, 0.0f, sizeof(float)))
 
-  reduce<<<1, 64>>>(d_array, 64, d_res);
-  /* ATTENZIONE: Nel caso vi trovaste nella necessità di lanciare più di un blocco, vi dovete ricordare di effettuare l'operazione DUE VOLTE,
+  /*
+   * ATTENZIONE: Nel caso vi trovaste nella necessità di lanciare più di un blocco, vi dovete ricordare di effettuare l'operazione DUE VOLTE,
    * perché il primo risultato è una riduzione parziale. Quindi, se lanciate una griglia di 4 blocchi, d_res deve essere un array di 4 elementi
    * e la chiamata sarà una roba del genere:
    * reduce<<<4, 64>>>(d_array, 64, d_res);
@@ -98,6 +103,9 @@ int main(int argc, char** argv)
    * fate attenzione che la seconda chiamata è un solo blocco di grandezza dimGrid SE E SOLO SE dimGrid è una potenza di 2, altrimenti chiamatela con
    * un blocco di grandezza 32 che è la dimensione di un warp!
    */
+  reduce<<<riempi qui ;), riempi qui ;)>>>(d_array, 64, d_res);
+  reduce<<<riempi qui ;), riempi qui ;)>>>(d_res, che valore ci metto qui?, d_res);
+
   CHECK_CUDA_CALL(cudaDeviceSynchronize())
 
   float* h_res;

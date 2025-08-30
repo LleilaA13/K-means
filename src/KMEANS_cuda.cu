@@ -348,53 +348,6 @@ __global__ void recalculateCentroids(
 }
 
 
-__device__ __forceinline__ float warp_reduce(float val)
-{
-	FULL_MASK = 0xffffffff;
-# pragma unroll
-	for (unsigned int i = 16; i > 0; i /= 2)
-	{
-		val = max(val, __shfl_down_sync(FULL_MASK, val, i));
-	}
-	return val;
-}
-
-__global__ void reduce(float* inputs, unsigned int input_size, float* outputs)
-{
-	/* Eccoci qui all'interno della reduce più veloce del west. Questa implementazione è presa da questo blog:
-	 * https://ashvardanian.com/posts/cuda-parallel-reductions/
-	 * Praticamente questa implementazione sfrutta delle operazioni che vengono eseguite a livello dei warp. Se vi ricordate, in cuda
-	 * i warp sono il più basso livello logico in cui le istruzioni vengono eseguite.
-	 * ATTENZIONE: per fare si che questo algoritmo funzioni, input_size DEVE essere una potenza di 2, quindi dovete paddare il vostro array finché non ha
-	 * la grandezza desiderata. Questo non influisce sulla correttezza del vostro algoritmo, vi dovete solo ricordare di paddare con un valore neutro per
-	 * la vostra operazione (nel caso del MAX il valore è -FLT_MAX oppure semplicemente FLT_MIN)
-	 */
-    float sum = 0;
-    for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-            i < input_size;
-            i += blockDim.x * gridDim.x)
-        sum += inputs[i]; // Questo for serve in caso non abbiate abbastanza thread per parallelizzare, e quindi ogni thread deve gestire più elementi. Per fortuna non è il vostro caso, quindi questo for in realtà di riduce semplicemente a sum += inputs[i] (fate la prova togliendolo per vedere che effettivamente l'algoritmo funziona lo stesso)
-
-    __shared__ float shared[32];
-    unsigned int lane = threadIdx.x % warpSize;
-    unsigned int wid = threadIdx.x / warpSize;
-
-    sum = warp_reduce(sum);
-    if (lane == 0)
-        shared[wid] = sum;
-
-    // Wait for all partial reductions
-    __syncthreads();
-
-    sum = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
-    if (wid == 0)
-        sum = warp_reduce(sum);
-
-    if (threadIdx.x == 0)
-        outputs[blockIdx.x] = sum;
-}
-
-
 int main(int argc, char *argv[])
 {
 
