@@ -94,8 +94,9 @@ int main(int argc, char** argv)
    * perché il primo risultato è una riduzione parziale. Quindi, se lanciate una griglia di 4 blocchi, d_res deve essere un array di 4 elementi
    * e la chiamata sarà una roba del genere:
    * reduce<<<4, 64>>>(d_array, 64, d_res);
-   * reduce<<<1, 4>>>(d_res, 4, d_res);
-   * fate attenzione che la seconda chiamata è un solo blocco di grandezza dimGrid (in questo caso 4)
+   * reduce<<<1, 32>>>(d_res, 4, d_res);
+   * fate attenzione che la seconda chiamata è un solo blocco di grandezza dimGrid SE E SOLO SE dimGrid è una potenza di 2, altrimenti chiamatela con
+   * un blocco di grandezza 32 che è la dimensione di un warp!
    */
   CHECK_CUDA_CALL(cudaDeviceSynchronize())
 
