@@ -580,7 +580,7 @@ __syncthreads();
 nvcc -O3 -arch=sm_75 \
      -use_fast_math \
      -Xptxas -O3 \
-     src/KMEANS_cuda.cu -o build/KMEANS_cuda
+     src/KMEANS_cuda.cu -lm -o build/KMEANS_cuda
 ```
 
 ### Runtime Environment

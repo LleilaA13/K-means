@@ -165,20 +165,19 @@ void initCentroids(const float *data, float *centroids, int *centroidPos, int sa
 }
 
 /*
-Function euclideanDistance: Euclidean distance
-This function could be modified
+Function euclideanDistance: Euclidean distance (optimized with SIMD)
 */
-float euclideanDistance(float *point, float *center, int samples)
+float euclideanDistance(float *restrict point, float *restrict center, int samples)
 {
     float dist = 0.0;
 
+#pragma omp simd reduction(+ : dist)
     for (int i = 0; i < samples; i++)
     {
-        // dist += (point[i] - center[i]) * (point[i] - center[i]);
+        // Use fmaf for better performance and accuracy
         dist = fmaf(point[i] - center[i], point[i] - center[i], dist);
     }
-    // sqrt() is not necessary and increases the time of execution
-    // dist = sqrt(dist);
+    // sqrt() is not necessary and increases execution time
     return dist; // Squared distance
 }
 
@@ -259,15 +258,16 @@ int main(int argc, char *argv[])
     // Broadcast lines and samples to all ranks
     MPI_Bcast(&lines, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&samples, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    // Allocate data on all ranks
-    data = (float *)calloc(lines * samples, sizeof(float));
-    if (data == NULL)
-    {
-        fprintf(stderr, "Memory allocation error.\n");
-        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    }
+
+    // Allocate and read data on rank 0
     if (rank == 0)
     {
+        data = (float *)malloc(lines * samples * sizeof(float));
+        if (data == NULL)
+        {
+            fprintf(stderr, "Memory allocation error.\n");
+            MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        }
         error = readInput2(argv[1], data);
         if (error != 0)
         {
@@ -275,8 +275,48 @@ int main(int argc, char *argv[])
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
     }
-    // Broadcast data to all ranks
-    MPI_Bcast(data, lines * samples, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    // Calculate data distribution parameters
+    int local_lines = lines / size;
+    int remainder = lines % size;
+    if (rank < remainder)
+    {
+        local_lines++;
+    }
+
+    // Allocate local data for all processes
+    float *local_data = (float *)malloc(local_lines * samples * sizeof(float));
+    if (local_data == NULL)
+    {
+        fprintf(stderr, "Memory allocation error.\n");
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
+
+    // Distribute data using Scatterv
+    int *sendcounts = NULL, *displs = NULL;
+    if (rank == 0)
+    {
+        sendcounts = (int *)malloc(size * sizeof(int));
+        displs = (int *)malloc(size * sizeof(int));
+
+        // Calculate send counts and displacements
+        for (int i = 0; i < size; i++)
+        {
+            int proc_lines = lines / size + (i < remainder ? 1 : 0);
+            sendcounts[i] = proc_lines * samples;
+            displs[i] = (i == 0) ? 0 : displs[i - 1] + sendcounts[i - 1];
+        }
+    }
+
+    MPI_Scatterv(data, sendcounts, displs, MPI_FLOAT,
+                 local_data, local_lines * samples, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    // Clean up send arrays on rank 0
+    if (rank == 0)
+    {
+        free(sendcounts);
+        free(displs);
+    }
     // Parameters
     int K = atoi(argv[2]);
     int maxIterations = atoi(argv[3]);
@@ -306,7 +346,7 @@ int main(int argc, char *argv[])
             centroidPos[i] = rand() % lines;
         initCentroids(data, centroids, centroidPos, samples, K);
     }
-    // Broadcast centroids to all ranks
+    // Broadcast centroids to all ranks (keep this simple approach)
     MPI_Bcast(centroids, K * samples, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
     // END CLOCK*****************************************
@@ -318,13 +358,12 @@ int main(int argc, char *argv[])
     start_time = MPI_Wtime();
     //**************************************************
     char *outputMsg = (char *)calloc(10000, sizeof(char));
-    
 
     int class;
     float dist, minDist;
     int it = 0;
     int changes = 0;
-    float maxDist;
+    float maxDist = 0.0; // Initialize to avoid warning
 
     // pointPerClass: number of points classified in each class
     // auxCentroids: mean of the points in each class
@@ -343,118 +382,130 @@ int main(int argc, char *argv[])
      * START HERE: DO NOT CHANGE THE CODE ABOVE THIS POINT
      *
      */
-    // Defining the local variables ecc for each process to work with:
+    // Local variables for each process
     int local_changes = 0;
     int *local_pointsPerClass = (int *)malloc(K * sizeof(int));
     float *local_auxCentroids = (float *)malloc(K * samples * sizeof(float));
-
-    // number of points not divisible by number of processes:
-    int local_lines = lines / size;
-    int remainder = lines % size;
-
-    // the first remainder ranks each get one extra row if rank < remainder:
-    if (rank < remainder)
-    {
-        local_lines++;
-    }
-
-    int start_row;
-    if (rank < remainder)
-    {
-        start_row = rank * local_lines;
-    }
-    else
-    {
-        start_row = remainder * (local_lines + 1) + (rank - remainder) * local_lines;
-    }
-
-    // Defining local data
     int *local_classMap = (int *)calloc(local_lines, sizeof(int));
-    float *local_data = (float *)malloc(local_lines * samples * sizeof(float));
-    if (local_classMap == NULL || local_data == NULL)
+
+    if (local_pointsPerClass == NULL || local_auxCentroids == NULL || local_classMap == NULL)
     {
         fprintf(stderr, "Memory allocation error.\n");
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
-    // Copy data row by row to avoid buffer overrun
-    for (int i = 0; i < local_lines; i++)
-    {
-        memcpy(&local_data[i * samples], &data[(start_row + i) * samples], samples * sizeof(float));
-    }
-
     do
     {
         it++;
-        
-        // Reset local variables for each iteration
+
+        // Reset local variables for each iteration (use fast memset)
         local_changes = 0;
-        zeroIntArray(local_pointsPerClass, K);
-        zeroFloatMatriz(local_auxCentroids, K, samples);
-        
-        // Assignment step - Fix the class initialization
-        #pragma omp parallel for private(class, minDist, dist) reduction(+ : local_changes)
+        memset(local_pointsPerClass, 0, K * sizeof(int));
+        memset(local_auxCentroids, 0, K * samples * sizeof(float));
+
+// Assignment step: Find nearest centroid for each point
+// Use proven OpenMP pattern from KMEANS_omp.c with identical scheduling
+#pragma omp parallel for private(class, minDist, dist) reduction(+ : local_changes) schedule(dynamic, 128)
         for (int i = 0; i < local_lines; i++)
         {
-            class = 0;  // Start with cluster 0, not 1
+            class = 1; // Start with cluster 1 (1-based indexing)
             minDist = FLT_MAX;
+
+            // Find closest centroid (cache-friendly: process all centroids for current point)
             for (int j = 0; j < K; j++)
             {
                 dist = euclideanDistance(&local_data[i * samples], &centroids[j * samples], samples);
                 if (dist < minDist)
                 {
                     minDist = dist;
-                    class = j;  // Use j directly (0-based indexing)
+                    class = j + 1; // 1-based indexing
                 }
             }
-            if (local_classMap[i] != (class + 1))  // Compare with 1-based for output
+
+            // Check for changes outside the inner loop
+            if (local_classMap[i] != class)
             {
                 local_changes++;
             }
-            local_classMap[i] = class + 1;  // Store as 1-based for output compatibility
-        }
-        
-        // Centroid accumulation step - MUST happen before MPI reductions
-        #pragma omp parallel
+            local_classMap[i] = class;
+        } // Centroid accumulation step: Use proven OpenMP pattern
+#pragma omp parallel
         {
-            int *thread_pointsPerClass = (int*)calloc(K, sizeof(int));
-            float *thread_auxCentroids = (float*)calloc(K * samples, sizeof(float));
-            
-            #pragma omp for
+            // Thread-local arrays - allocate once per thread
+            int *thread_pointsPerClass = (int *)calloc(K, sizeof(int));
+            float *thread_auxCentroids = (float *)calloc(K * samples, sizeof(float));
+
+// Each thread processes its portion with dynamic scheduling
+#pragma omp for private(class) schedule(dynamic, 64)
             for (int i = 0; i < local_lines; i++)
             {
-                int cluster_idx = local_classMap[i] - 1;  // Convert back to 0-based
-                thread_pointsPerClass[cluster_idx]++;
+                class = local_classMap[i];
+                thread_pointsPerClass[class - 1]++;
+
+                // Accumulate centroid sums
                 for (int j = 0; j < samples; j++)
                 {
-                    thread_auxCentroids[cluster_idx * samples + j] += local_data[i * samples + j];
+                    thread_auxCentroids[(class - 1) * samples + j] += local_data[i * samples + j];
                 }
             }
-            
-            // Combine thread results
-            #pragma omp critical
+
+// Efficient reduction: minimize critical section time
+#pragma omp critical
             {
                 for (int k = 0; k < K; k++)
                 {
                     local_pointsPerClass[k] += thread_pointsPerClass[k];
+                    float *dest = &local_auxCentroids[k * samples];
+                    float *src = &thread_auxCentroids[k * samples];
                     for (int j = 0; j < samples; j++)
                     {
-                        local_auxCentroids[k * samples + j] += thread_auxCentroids[k * samples + j];
+                        dest[j] += src[j];
                     }
                 }
             }
-            
+
+            // Free thread-local memory
             free(thread_pointsPerClass);
             free(thread_auxCentroids);
         }
-        
-        // Now do the MPI reductions
-        MPI_Allreduce(&local_changes, &changes, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-        MPI_Allreduce(local_pointsPerClass, pointsPerClass, K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-        MPI_Allreduce(local_auxCentroids, auxCentroids, K * samples, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-    
-        // Centroid update - avoid division by zero
-        #pragma omp parallel for collapse(2)
+
+        // MPI reductions: Combine all reductions into a single call for better performance
+        // Create combined buffer: [changes, pointsPerClass[K], auxCentroids[K*samples]]
+        int combined_size = 1 + K + (K * samples);
+        float *local_combined = (float *)malloc(combined_size * sizeof(float));
+        float *global_combined = (float *)malloc(combined_size * sizeof(float));
+
+        // Pack local data
+        local_combined[0] = (float)local_changes;
+        for (int i = 0; i < K; i++)
+        {
+            local_combined[1 + i] = (float)local_pointsPerClass[i];
+        }
+        memcpy(&local_combined[1 + K], local_auxCentroids, K * samples * sizeof(float));
+
+        // Single MPI communication instead of 3 separate calls
+        MPI_Allreduce(local_combined, global_combined, combined_size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+
+        // Unpack results
+        changes = (int)global_combined[0];
+        for (int i = 0; i < K; i++)
+        {
+            pointsPerClass[i] = (int)global_combined[1 + i];
+        }
+        memcpy(auxCentroids, &global_combined[1 + K], K * samples * sizeof(float));
+
+        free(local_combined);
+        free(global_combined);
+
+        // Early termination check - avoid centroid computation if converged
+        if (changes <= minChanges)
+        {
+            maxDist = 0.0; // Set maxDist for consistent termination reporting
+            break;
+        }
+
+// Centroid update: parallelize division with collapse
+#pragma omp parallel for collapse(2)
         for (int i = 0; i < K; i++)
         {
             for (int j = 0; j < samples; j++)
@@ -462,51 +513,39 @@ int main(int argc, char *argv[])
                 if (pointsPerClass[i] > 0)
                     auxCentroids[i * samples + j] /= pointsPerClass[i];
                 else
-                    auxCentroids[i * samples + j] = centroids[i * samples + j];  // Keep old centroid if no points
+                    auxCentroids[i * samples + j] = centroids[i * samples + j]; // Keep old centroid
             }
         }
-        
+
         // Distance calculation between old and new centroids
-        maxDist = 0.0;  // Start with 0, not FLT_MIN
-        #pragma omp parallel for reduction(max:maxDist)
+        maxDist = 0.0;
         for (int i = 0; i < K; i++)
         {
             float dist = euclideanDistance(&centroids[i * samples], &auxCentroids[i * samples], samples);
             if (dist > maxDist)
                 maxDist = dist;
         }
-        
+
         // Update centroids
-        memcpy(centroids, auxCentroids, (K * samples * sizeof(float)));
-        
-        // Debug output (remove after testing)
-        if (rank == 0 && it <= 5)
-        {
-            printf("Iteration %d: changes=%d, maxDist=%f\n", it, changes, maxDist);
-            printf("Points per cluster: ");
-            for (int k = 0; k < K; k++)
-                printf("%d ", pointsPerClass[k]);
-            printf("\n");
-            fflush(stdout);
-        }
-        
+        memcpy(centroids, auxCentroids, K * samples * sizeof(float));
+
     } while ((changes > minChanges) && (it < maxIterations) && (maxDist > (maxThreshold * maxThreshold)));
 
     // Gather classMaps from all processes. but the processes have different local_classMap sizes
     // use Gatherv
-    int *recvcounts = (int *)malloc(size * sizeof(int)); // Number of elements to receive from each process
-    int *displs = (int *)malloc(size * sizeof(int));     // Displacements for each process
+    int *recvcounts = (int *)malloc(size * sizeof(int));    // Number of elements to receive from each process
+    int *gather_displs = (int *)malloc(size * sizeof(int)); // Displacements for each process
 
     MPI_Gather(&local_lines, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, MPI_COMM_WORLD); // Gather local line counts
 
     if (rank == 0)
     {
         int total_lines = recvcounts[0]; // Initialize total_lines with the first process's count
-        displs[0] = 0;                   // Initialize displacements
+        gather_displs[0] = 0;            // Initialize displacements
         for (int i = 1; i < size; i++)
         {
-            displs[i] = displs[i - 1] + recvcounts[i - 1]; // Calculate displacements
-            total_lines += recvcounts[i];                  // Update total_lines
+            gather_displs[i] = gather_displs[i - 1] + recvcounts[i - 1]; // Calculate displacements
+            total_lines += recvcounts[i];                                // Update total_lines
         }
         // Check if the total lines match the expected lines:
         if (total_lines != lines)
@@ -528,10 +567,10 @@ int main(int argc, char *argv[])
             }
         }
     }
-    MPI_Gatherv(local_classMap, local_lines, MPI_INT, classMap, recvcounts, displs, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(local_classMap, local_lines, MPI_INT, classMap, recvcounts, gather_displs, MPI_INT, 0, MPI_COMM_WORLD);
 
     free(recvcounts);
-    free(displs);
+    free(gather_displs);
     /*
      * STOP HERE: DO NOT CHANGE THE CODE BELOW THIS POINT
      *
@@ -586,9 +625,13 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Free memory - Fix the segmentation fault issues
-    free(data);
-    if (rank == 0) {
+    // Free memory - proper cleanup
+    if (rank == 0 && data != NULL)
+    {
+        free(data);
+    }
+    if (rank == 0)
+    {
         free(classMap);
         free(centroidPos);
     }

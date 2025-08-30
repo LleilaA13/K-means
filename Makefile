@@ -36,6 +36,7 @@ CUDACC=nvcc
 
 # Flags for optimization and libs
 FLAGS=-O3 -Wall
+CUDAFLAGS=-O3
 LIBS=-lm
 
 # Targets to build
@@ -64,12 +65,14 @@ help:
 	@echo "  make KMEANS_mpi_omp Build only the MPI+OpenMP hybrid version"
 	@echo "  make KMEANS_cuda   Build only the CUDA version"
 	@echo
-	@echo "  make all           Build all versions"
-	@echo "  make debug         Build with debug info"
+	@echo
+	@echo "Cleaning Targets:"
 	@echo "  make clean         Remove build files and clean results/logs"
 	@echo "  make clean-build   Remove only build files"
 	@echo "  make clean-results Remove only results directory"
 	@echo "  make clean-logs    Remove only logs directory"
+	@echo "  make reset         Reset project (remove everything except data/)"
+	@echo "  make reset-force   Force reset without confirmation"
 	@echo "  make setup         Create directory structure"
 	@echo
 
@@ -92,7 +95,7 @@ $(BUILDDIR)/KMEANS_mpi_omp: $(SRCDIR)/KMEANS_mpi_omp.c | $(BUILDDIR)
 	$(MPICC) $(FLAGS) $(DEBUG) $(OMPFLAG) $< $(LIBS) -o $@
 
 $(BUILDDIR)/KMEANS_cuda: $(SRCDIR)/KMEANS_cuda.cu | $(BUILDDIR)
-	$(CUDACC) $(DEBUG) $< $(LIBS) -o $@
+	srun --partition=students --gpus=1 $(CUDACC) $(CUDAFLAGS) $(DEBUG) -arch=sm_75 $< $(LIBS) -o $@
 
 # Convenience targets (without path prefix)
 KMEANS_seq: $(BUILDDIR)/KMEANS_seq
@@ -132,6 +135,26 @@ clean-logs:
 	rm -f $(LOGSDIR)/*
 	@echo "✓ Logs directory cleaned!"
 
+# Reset project: Remove everything except data/ (useful before copying from localhost)
+reset:
+	@echo "⚠️  WARNING: This will remove ALL project files except data/ directory!"
+	@echo "   Files to be removed: build/ logs/ results/ scripts/ src/ archive/ docs/ LICENSE Makefile README.md"
+	@read -p "Are you sure you want to continue? (y/N): " confirm && \
+	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
+		echo "Resetting project..."; \
+		rm -rf build/ logs/ results/ scripts/ src/ archive/ docs/ LICENSE Makefile README.md; \
+		echo "✓ Project reset complete! Only data/ directory preserved."; \
+		echo "You can now copy new files from your localhost."; \
+	else \
+		echo "Reset cancelled."; \
+	fi
+
+# Force reset without confirmation (use with caution!)
+reset-force:
+	@echo "Force resetting project (removing everything except data/)..."
+	rm -rf build/ logs/ results/ scripts/ src/ archive/ docs/ LICENSE Makefile README.md
+	@echo "✓ Project force reset complete! Only data/ directory preserved."
+
 # Compile in debug mode
 debug:
 	make DEBUG="-DDEBUG -g" FLAGS="-g -Wall" all
@@ -146,6 +169,23 @@ test-omp: $(BUILDDIR)/KMEANS_omp
 tree:
 	@echo "Current repository structure:"
 	@find . -type d -name ".git" -prune -o -type d -print | sort
+
+# Configuration for cluster sync (update these with your details)
+CLUSTER_USER=muneramartinelli_2049054
+CLUSTER_HOST=151.100.174.45
+CLUSTER_PATH=~/K-means/
+
+# Sync local files to cluster (excluding data folder)
+sync:
+	@echo "Syncing local files to cluster..."
+	@echo "Target: $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)"
+	rsync -av --exclude='data/' --exclude='build/' --exclude='logs/' --exclude='results/' --exclude='.git/' ./ $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)
+	@echo "Sync completed!"
+
+# Sync only source code and scripts
+sync-src:
+	@echo "Syncing only source code to cluster..."
+	rsync -av --include='src/' --include='scripts/' --include='Makefile' --include='*.md' --exclude='*' ./ $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)
 
 # Show compiler information for debugging
 compiler-info:

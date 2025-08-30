@@ -14,7 +14,7 @@
 # ============================================
 # CONFIGURATION: Change this to test different datasets
 # ============================================
-INPUT_DATASET="data/input100D2.inp"
+INPUT_DATASET="data/200k_100.inp"
 # Alternative options:
 # INPUT_DATASET="data/input2D.inp"
 # INPUT_DATASET="data/input10D.inp"

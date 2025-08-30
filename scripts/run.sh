@@ -51,6 +51,7 @@ show_usage() {
     echo "  mpi_omp_perf   - MPI+OpenMP hybrid test (slurm_mpi_omp_performance.sh)"
     echo "  mpi_omp_multi  - MPI+OpenMP multi-node test (slurm_mpi_omp_multinode.sh)"
     echo "  comprehensive  - Multi-version comparison (slurm_comprehensive.sh)"
+    echo "  comp_test      - Comprehensive K-means testing (comprehensive_kmeans_test.sh)"
     echo "  cuda          - GPU performance test (slurm_cuda.sh)"
     echo "  python        - Python analysis runner (slurm_python.sh)"
     echo ""
@@ -59,6 +60,7 @@ show_usage() {
     echo "  compare       - Results comparison (compare_module.py)"
     echo "  verify        - Dynamic results verification (verify_results.py)"
     echo "  plot          - 2D visualization (plot2d_module.py)"
+    echo "  performance   - Comprehensive performance analysis (performance_analysis.py)"
     echo "  quick         - Quick testing (quick_test.py)"
     echo ""
     echo "Examples:"
@@ -66,6 +68,8 @@ show_usage() {
     echo "  $0 slurm omp_perf"
     echo "  $0 slurm mpi_perf"
     echo "  $0 slurm mpi_omp_perf"
+    echo "  $0 slurm comp_test"
+    echo "  $0 analysis performance"
     echo "  $0 analysis log"
     echo "  $0 slurm comprehensive --help"
 }
@@ -130,6 +134,10 @@ case "$CATEGORY" in
                 print_header "Submitting comprehensive analysis to SLURM"
                 exec sbatch scripts/slurm/slurm_comprehensive.sh
                 ;;
+            "comp_test"|"comprehensive_test")
+                print_header "Submitting comprehensive K-means testing to SLURM"
+                exec sbatch scripts/slurm/comprehensive_kmeans_test.sh
+                ;;
             "cuda"|"gpu")
                 print_header "Submitting CUDA performance test to SLURM"
                 exec sbatch scripts/slurm/slurm_cuda.sh
@@ -163,6 +171,16 @@ case "$CATEGORY" in
             "plot"|"plot2d")
                 print_header "Running 2D visualization"
                 exec python3 scripts/analysis/plot2d_module.py "$@"
+                ;;
+            "performance"|"perf"|"perf_analysis")
+                print_header "Running comprehensive performance analysis"
+                # Check if timing logs exist
+                if [ ! -d "logs/timing_logs" ]; then
+                    print_error "No timing logs found. Please run comprehensive testing first:"
+                    echo "  $0 slurm comp_test"
+                    exit 1
+                fi
+                exec python3 scripts/analysis/performance_analysis.py "$@"
                 ;;
             "quick")
                 print_header "Running quick test"
