@@ -347,6 +347,54 @@ __global__ void recalculateCentroids(
 		newCentroids[clusterIdx * c_dimensions + dimIdx] = 0.0f; // Or keep old centroid
 }
 
+
+__device__ __forceinline__ float warp_reduce(float val)
+{
+	FULL_MASK = 0xffffffff;
+# pragma unroll
+	for (unsigned int i = 16; i > 0; i /= 2)
+	{
+		val = max(val, __shfl_down_sync(FULL_MASK, val, i));
+	}
+	return val;
+}
+
+__global__ void reduce(float* inputs, unsigned int input_size, float* outputs)
+{
+	/* Eccoci qui all'interno della reduce più veloce del west. Questa implementazione è presa da questo blog:
+	 * https://ashvardanian.com/posts/cuda-parallel-reductions/
+	 * Praticamente questa implementazione sfrutta delle operazioni che vengono eseguite a livello dei warp. Se vi ricordate, in cuda
+	 * i warp sono il più basso livello logico in cui le istruzioni vengono eseguite.
+	 * ATTENZIONE: per fare si che questo algoritmo funzioni, input_size DEVE essere una potenza di 2, quindi dovete paddare il vostro array finché non ha
+	 * la grandezza desiderata. Questo non influisce sulla correttezza del vostro algoritmo, vi dovete solo ricordare di paddare con un valore neutro per
+	 * la vostra operazione (nel caso del MAX il valore è -FLT_MAX oppure semplicemente FLT_MIN)
+	 */
+    float sum = 0;
+    for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+            i < input_size;
+            i += blockDim.x * gridDim.x)
+        sum += inputs[i]; // Questo for serve in caso non abbiate abbastanza thread per parallelizzare, e quindi ogni thread deve gestire più elementi. Per fortuna non è il vostro caso, quindi questo for in realtà di riduce semplicemente a sum += inputs[i] (fate la prova togliendolo per vedere che effettivamente l'algoritmo funziona lo stesso)
+
+    __shared__ float shared[32];
+    unsigned int lane = threadIdx.x % warpSize;
+    unsigned int wid = threadIdx.x / warpSize;
+
+    sum = warp_reduce(sum);
+    if (lane == 0)
+        shared[wid] = sum;
+
+    // Wait for all partial reductions
+    __syncthreads();
+
+    sum = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
+    if (wid == 0)
+        sum = warp_reduce(sum);
+
+    if (threadIdx.x == 0)
+        outputs[blockIdx.x] = sum;
+}
+
+
 int main(int argc, char *argv[])
 {
 
@@ -584,6 +632,16 @@ int main(int argc, char *argv[])
 
 		CHECK_CUDA_CALL(cudaStreamSynchronize(stream)); // Wait for GPU operations to complete
 
+		/* -------------------------- Ciao ragazzi, commentino qui sotto ----------------------- */
+		/* Qui c'è il sempiterno problema che fare questa operazione di max con cuda è problematico perché non esiste atomicMax() per i float.
+		 * FORTUNATAMENTE puoi usare una strided reduction! L'algoritmo di riduzione funziona perfettamente anche con operazioni tipo max, min, ecc...
+		 * In questo link: https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf c'è un pdf dove troverete un'implementazione della
+		 * riduzione con svariati livelli di ottimizzazione, ma il vostro bro rick vi ha incluso nella repo un file (reduce.cu) che
+		 * contiene un'implementazione ancora più veloce che farà andare in brodo di giuggiole il boss de sensi! All'interno di questa implementazione
+		 * troverete una descrizione delle funzioni che vengono usate, così se il de sensi vi chiede qualcosa non cascate dal pero. Considerate di usarla
+		 * perché de sensi ha spiegato questa riduzione a lezione (quella che usa il butterfly pattern) e la versione che vi ho dato usa delle cose molto
+		 * a basso livello di cuda (operazione collettive all'interno dei thread di un warp). è un pò complicata ma penso che apprezzerà.
+		 */
 		maxDist = FLT_MIN;
 		for (i = 0; i < K; i++)
 		{
@@ -674,3 +732,5 @@ int main(int argc, char *argv[])
 	fflush(stdout);
 	return 0;
 }
+
+
