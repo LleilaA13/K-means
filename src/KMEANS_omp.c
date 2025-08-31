@@ -333,6 +333,19 @@ int main(int argc, char *argv[])
 
 	omp_set_num_threads(threads);
 
+
+	/*------------------------- Ciao --------------------------*/
+	// Trucchettino per accedere ai dati più velocemente! Salvati in un array gli indirizzi di ogni riga della tua matrice dei dati, così quando
+	// fai data[i * samples] nel loop non ti devi andare a prendere in ram l'indirizzo!. Questa cosa fa andare il tutto un pò più veloce, visto
+	// che gli indirizzi sono sempre quelli!
+	float** row_pointers = (float**) malloc(lines * sizeof(float*));
+
+	#		pragma omp parallel for
+		for (unsigned int row = 0; row < lines; ++row)
+		{
+			row_pointers[row] = &data[row * samples];
+		}
+
 	do
 	{
 		it++;
@@ -340,6 +353,8 @@ int main(int argc, char *argv[])
 		// 1. Calculate the distance from each point to the centroid
 		// Assign each point to the nearest centroid.
 		changes = 0;
+
+
 #pragma omp parallel for private(i, j, class, minDist, dist) shared(data, centroids, classMap, lines, samples, K) reduction(+ : changes) schedule(dynamic, 128)
 		for (i = 0; i < lines; i++)
 		{
@@ -349,7 +364,7 @@ int main(int argc, char *argv[])
 			// Cache-friendly: process all centroids for current point
 			for (j = 0; j < K; j++)
 			{
-				dist = euclideanDistance(&data[i * samples], &centroids[j * samples], samples);
+				dist = euclideanDistance(row_pointers[i], &centroids[j * samples], samples);
 
 				if (dist < minDist)
 				{
@@ -373,9 +388,10 @@ int main(int argc, char *argv[])
 		// Optimized approach: Use reduction and better memory management
 #pragma omp parallel
 		{
-			// Thread-local arrays - allocate once per thread
+			// // Thread-local arrays - allocate once per thread
 			int *local_pointsPerClass = (int *)calloc(K, sizeof(int));
 			float *local_auxCentroids = (float *)calloc(K * samples, sizeof(float));
+
 
 			// Each thread processes its portion of data with dynamic scheduling for better load balance
 #pragma omp for private(i, j, class) schedule(dynamic, 64)
@@ -426,13 +442,14 @@ int main(int argc, char *argv[])
 		}
 
 		maxDist = FLT_MIN;
+#		pragma omp parallel for reduction(max: maxDist)
 		for (i = 0; i < K; i++)
 		{
 			distCentroids[i] = euclideanDistance(&centroids[i * samples], &auxCentroids[i * samples], samples);
-			if (distCentroids[i] > maxDist)
-			{
-				maxDist = distCentroids[i];
-			}
+
+			// L'if qui era superfluo se usi la reduction(max: maxDist)
+			maxDist = distCentroids[i];
+
 		}
 		memcpy(centroids, auxCentroids, (K * samples * sizeof(float)));
 
@@ -454,6 +471,10 @@ int main(int argc, char *argv[])
 	double computation_time = end - start;
 	printf("\nComputation: %f seconds", computation_time);
 	fflush(stdout);
+
+
+
+
 
 	// Write timing to file
 	char timing_filename[256];
@@ -507,6 +528,7 @@ int main(int argc, char *argv[])
 	free(distCentroids);
 	free(pointsPerClass);
 	free(auxCentroids);
+
 
 	// END CLOCK*****************************************
 	end = omp_get_wtime();
