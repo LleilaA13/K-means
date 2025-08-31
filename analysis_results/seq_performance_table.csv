@@ -1,0 +1,6 @@
+Implementation,Dataset,Configuration,Total_Cores,Avg_Time_s,Std_Time_s,Min_Time_s,Max_Time_s,Runs,Speedup,Efficiency,Sequential_Baseline_s
+seq,200k_100,1 core,1,57.128,0.011,57.111,57.14,5,1.0,1.0,57.128
+seq,400k_100,1 core,1,114.365,0.252,114.173,114.65,5,1.0,1.0,114.365
+seq,800k_100,1 core,1,178.963,0.426,178.627,179.469,5,1.0,1.0,178.963
+seq,input100D,1 core,1,1.301,0.0,1.301,1.302,5,1.0,1.0,1.301
+seq,input100D2,1 core,1,40.952,0.008,40.942,40.963,5,1.0,1.0,40.952

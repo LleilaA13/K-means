@@ -1,0 +1,51 @@
+K-MEANS PERFORMANCE ANALYSIS REPORT
+==================================================
+Generated: 2025-08-31 18:21:03
+
+DATASETS ANALYZED:
+--------------------
+- 200k_100: Sequential baseline = 57.128s
+- 400k_100: Sequential baseline = 114.365s
+- 800k_100: Sequential baseline = 178.963s
+- input100D: Sequential baseline = 1.301s
+- input100D2: Sequential baseline = 40.952s
+
+IMPLEMENTATIONS TESTED:
+-------------------------
+- mpi: Best speedup = 48.13x (64 processes)
+- mpi_omp: Best speedup = 45.14x (2p×32t (64 cores))
+- omp: Best speedup = 42.80x (64 threads)
+- seq: Best speedup = 1.00x (1 core)
+
+BEST PERFORMANCE PER DATASET:
+------------------------------
+200k_100:
+  Best: mpi - 64 processes
+  Speedup: 46.74x
+  Efficiency: 0.730
+  Time: 1.222s
+
+400k_100:
+  Best: omp - 64 threads
+  Speedup: 42.80x
+  Efficiency: 0.669
+  Time: 2.672s
+
+800k_100:
+  Best: mpi - 64 processes
+  Speedup: 46.70x
+  Efficiency: 0.730
+  Time: 3.832s
+
+input100D:
+  Best: mpi_omp - 2p×32t (64 cores)
+  Speedup: 38.63x
+  Efficiency: 0.604
+  Time: 0.034s
+
+input100D2:
+  Best: mpi - 64 processes
+  Speedup: 48.13x
+  Efficiency: 0.752
+  Time: 0.851s
+

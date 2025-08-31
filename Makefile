@@ -179,7 +179,7 @@ CLUSTER_PATH=~/K-means/
 sync:
 	@echo "Syncing local files to cluster..."
 	@echo "Target: $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)"
-	rsync -av --exclude='data/' --exclude='build/' --exclude='logs/' --exclude='results/' --exclude='.git/' ./ $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)
+	rsync -av --exclude='analysis_results/' --exclude='data/' --exclude='build/' --exclude='logs/' --exclude='results/' --exclude='.git/' ./ $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)
 	@echo "Sync completed!"
 
 # Sync only source code and scripts
