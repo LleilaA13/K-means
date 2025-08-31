@@ -347,6 +347,7 @@ __global__ void recalculateCentroids(
 		newCentroids[clusterIdx * c_dimensions + dimIdx] = 0.0f; // Or keep old centroid
 }
 
+
 int main(int argc, char *argv[])
 {
 
@@ -584,6 +585,16 @@ int main(int argc, char *argv[])
 
 		CHECK_CUDA_CALL(cudaStreamSynchronize(stream)); // Wait for GPU operations to complete
 
+		/* -------------------------- Ciao ragazzi, commentino qui sotto ----------------------- */
+		/* Qui c'è il sempiterno problema che fare questa operazione di max con cuda è problematico perché non esiste atomicMax() per i float.
+		 * FORTUNATAMENTE puoi usare una strided reduction! L'algoritmo di riduzione funziona perfettamente anche con operazioni tipo max, min, ecc...
+		 * In questo link: https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf c'è un pdf dove troverete un'implementazione della
+		 * riduzione con svariati livelli di ottimizzazione, ma il vostro bro rick vi ha incluso nella repo un file (reduce.cu) che
+		 * contiene un'implementazione ancora più veloce che farà andare in brodo di giuggiole il boss de sensi! All'interno di questa implementazione
+		 * troverete una descrizione delle funzioni che vengono usate, così se il de sensi vi chiede qualcosa non cascate dal pero. Considerate di usarla
+		 * perché de sensi ha spiegato questa riduzione a lezione (quella che usa il butterfly pattern) e la versione che vi ho dato usa delle cose molto
+		 * a basso livello di cuda (operazione collettive all'interno dei thread di un warp). è un pò complicata ma penso che apprezzerà.
+		 */
 		maxDist = FLT_MIN;
 		for (i = 0; i < K; i++)
 		{
@@ -674,3 +685,5 @@ int main(int argc, char *argv[])
 	fflush(stdout);
 	return 0;
 }
+
+
