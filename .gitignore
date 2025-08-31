@@ -10,6 +10,7 @@ data/*.inp
 # Results and logs (optional - you might want to track some results)
 results/*.out
 results/*.txt
+results/*.timing
 logs/*.txt
 logs/*.log
 
