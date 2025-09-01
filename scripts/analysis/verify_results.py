@@ -27,14 +27,60 @@ def extract_dataset_name(filename):
     # Split by underscores
     parts = name.split('_')
     
-    if len(parts) < 2:
+    if len(parts) < 3:
         return None
     
     # Handle different naming patterns
-    if parts[0] in ['seq', 'omp', 'mpi', 'cuda']:
-        # Format: implementation_dataset_config_runX
-        if len(parts) >= 2:
-            return parts[1]  # dataset is second part
+    if parts[0] == 'seq':
+        # Format: seq_dataset_runX
+        # Find where the run part starts (runX)
+        dataset_parts = []
+        for i, part in enumerate(parts[1:], 1):
+            if part.startswith('run'):
+                break
+            dataset_parts.append(part)
+        return '_'.join(dataset_parts) if dataset_parts else None
+        
+    elif parts[0] == 'omp':
+        # Format: omp_dataset_Xt_runX
+        # Find where the thread config starts (Xt)
+        dataset_parts = []
+        for i, part in enumerate(parts[1:], 1):
+            if part.endswith('t') and part[:-1].isdigit():
+                break
+            dataset_parts.append(part)
+        return '_'.join(dataset_parts) if dataset_parts else None
+        
+    elif parts[0] == 'mpi' and len(parts) > 1 and parts[1] != 'omp':
+        # Format: mpi_dataset_Xp_runX
+        # Find where the process config starts (Xp)
+        dataset_parts = []
+        for i, part in enumerate(parts[1:], 1):
+            if part.endswith('p') and part[:-1].isdigit():
+                break
+            dataset_parts.append(part)
+        return '_'.join(dataset_parts) if dataset_parts else None
+        
+    elif parts[0] == 'mpi' and len(parts) > 1 and parts[1] == 'omp':
+        # Format: mpi_omp_dataset_Xp_Yt_runX
+        # Find where the process config starts (Xp)
+        dataset_parts = []
+        for i, part in enumerate(parts[2:], 2):
+            if part.endswith('p') and part[:-1].isdigit():
+                break
+            dataset_parts.append(part)
+        return '_'.join(dataset_parts) if dataset_parts else None
+        
+    elif parts[0] == 'cuda':
+        # Format: cuda_dataset_runX
+        # Find where the run part starts (runX)
+        dataset_parts = []
+        for i, part in enumerate(parts[1:], 1):
+            if part.startswith('run'):
+                break
+            dataset_parts.append(part)
+        return '_'.join(dataset_parts) if dataset_parts else None
+        
     elif parts[0] == 'result':
         # Format: result_dataset_implementation or result_dataset_config
         if len(parts) >= 2:
@@ -52,6 +98,7 @@ def extract_dataset_name(filename):
 def find_sequential_baselines(results_dir):
     """Find all sequential baseline files grouped by dataset."""
     seq_patterns = [
+        "seq_*_run*.out",  # seq_dataset_runX.out pattern
         "*_seq_*.out",
         "*_seq.out", 
         "result_seq*.out"
@@ -67,9 +114,16 @@ def find_sequential_baselines(results_dir):
         filename = os.path.basename(seq_file)
         dataset = extract_dataset_name(filename)
         if dataset:
-            seq_by_dataset[dataset] = seq_file
+            if dataset not in seq_by_dataset:
+                seq_by_dataset[dataset] = []
+            seq_by_dataset[dataset].append(seq_file)
     
-    return seq_by_dataset
+    # For each dataset, pick the first sequential file as baseline
+    seq_baselines = {}
+    for dataset, files in seq_by_dataset.items():
+        seq_baselines[dataset] = sorted(files)[0]  # Use first run as baseline
+    
+    return seq_baselines
 
 def find_parallel_results(results_dir):
     """Find all parallel result files grouped by dataset."""
@@ -82,7 +136,7 @@ def find_parallel_results(results_dir):
         filename = os.path.basename(file)
         
         # Skip sequential files
-        if '_seq_' in filename or '_seq.' in filename:
+        if '_seq_' in filename or '_seq.' in filename or filename.startswith('seq_'):
             continue
             
         # Include files that look like parallel results
@@ -90,6 +144,9 @@ def find_parallel_results(results_dir):
         
         is_parallel = False
         if any(indicator in filename.lower() for indicator in parallel_indicators):
+            is_parallel = True
+        elif filename.startswith('mpi_omp_'):
+            # Specifically handle mpi_omp files
             is_parallel = True
         elif filename.startswith('result_') and filename.endswith('.out'):
             # Include other result files that might be parallel
@@ -118,8 +175,10 @@ def run_comparison(seq_file, par_file):
         return False
     
     try:
+        # Use the Python executable from the current environment
+        python_exe = sys.executable
         result = subprocess.run([
-            sys.executable, compare_script, seq_file, par_file
+            python_exe, compare_script, seq_file, par_file
         ], capture_output=True, text=True, timeout=30)
         
         if result.returncode == 0:

@@ -1,51 +1,52 @@
 K-MEANS PERFORMANCE ANALYSIS REPORT
 ==================================================
-Generated: 2025-08-31 18:21:03
+Generated: 2025-09-01 02:24:40
 
 DATASETS ANALYZED:
 --------------------
+- input100D: Sequential baseline = 1.301s
+- input100D2: Sequential baseline = 40.952s
 - 200k_100: Sequential baseline = 57.128s
 - 400k_100: Sequential baseline = 114.365s
 - 800k_100: Sequential baseline = 178.963s
-- input100D: Sequential baseline = 1.301s
-- input100D2: Sequential baseline = 40.952s
 
 IMPLEMENTATIONS TESTED:
 -------------------------
-- mpi: Best speedup = 48.13x (64 processes)
-- mpi_omp: Best speedup = 45.14x (2p×32t (64 cores))
-- omp: Best speedup = 42.80x (64 threads)
-- seq: Best speedup = 1.00x (1 core)
+- cuda: Best speedup = 69.06x (cuda)
+- mpi: Best speedup = 48.13x (64p)
+- mpi_omp: Best speedup = 45.14x (2p_32t)
+- omp: Best speedup = 42.80x (64t)
+- seq: Best speedup = 1.00x (sequential)
 
 BEST PERFORMANCE PER DATASET:
 ------------------------------
 200k_100:
-  Best: mpi - 64 processes
-  Speedup: 46.74x
-  Efficiency: 0.730
-  Time: 1.222s
+  Best: cuda - cuda
+  Speedup: 69.06x
+  Efficiency: 69.056
+  Time: 0.827s
 
 400k_100:
-  Best: omp - 64 threads
-  Speedup: 42.80x
-  Efficiency: 0.669
-  Time: 2.672s
+  Best: cuda - cuda
+  Speedup: 65.67x
+  Efficiency: 65.674
+  Time: 1.741s
 
 800k_100:
-  Best: mpi - 64 processes
-  Speedup: 46.70x
-  Efficiency: 0.730
-  Time: 3.832s
+  Best: cuda - cuda
+  Speedup: 66.23x
+  Efficiency: 66.229
+  Time: 2.702s
 
 input100D:
-  Best: mpi_omp - 2p×32t (64 cores)
+  Best: mpi_omp - 2p_32t
   Speedup: 38.63x
   Efficiency: 0.604
   Time: 0.034s
 
 input100D2:
-  Best: mpi - 64 processes
-  Speedup: 48.13x
-  Efficiency: 0.752
-  Time: 0.851s
+  Best: cuda - cuda
+  Speedup: 68.55x
+  Efficiency: 68.546
+  Time: 0.597s
 

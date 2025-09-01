@@ -1,0 +1,36 @@
+K-MEANS PERFORMANCE SUMMARY TABLE
+============================================================
+
+Implementation    Dataset  Best_Time_s  Best_Speedup  Best_Efficiency  Optimal_Cores  Worst_Time_s  Avg_Efficiency
+          CUDA  input100D        0.039        33.745           33.745              1         0.039          33.745
+          CUDA input100D2        0.597        68.546           68.546              1         0.597          68.546
+          CUDA   200k_100        0.827        69.056           69.056              1         0.827          69.056
+          CUDA   400k_100        1.741        65.674           65.674              1         1.741          65.674
+          CUDA   800k_100        2.702        66.229           66.229              1         2.702          66.229
+           MPI  input100D        0.045        28.900            1.124              1         1.158           0.798
+           MPI input100D2        0.851        48.131            1.125              1        36.412           0.982
+           MPI   200k_100        1.222        46.742            1.124              1        50.813           0.992
+           MPI   400k_100        2.870        39.844            1.125              2       101.655           0.952
+           MPI   800k_100        3.832        46.704            1.123              1       159.342           1.027
+       MPI_OMP  input100D        0.034        38.625            0.943              2         0.731           0.601
+       MPI_OMP input100D2        0.907        45.141            0.943              2        24.133           0.653
+       MPI_OMP   200k_100        1.326        43.076            0.943              2        32.085           0.631
+       MPI_OMP   400k_100        2.904        39.375            0.944              2        69.398           0.632
+       MPI_OMP   800k_100        4.545        39.376            0.944              2       102.366           0.631
+           OMP  input100D        0.057        22.773            1.112              1         1.170           0.917
+           OMP input100D2        0.975        41.987            1.111              1        36.869           1.002
+           OMP   200k_100        1.355        42.155            1.112              1        51.385           0.998
+           OMP   400k_100        2.672        42.804            1.113              1       102.721           1.007
+           OMP   800k_100        4.213        42.483            1.113              1       160.795           1.006
+           SEQ  input100D        1.301         1.000            1.000              1         1.301           1.000
+           SEQ input100D2       40.952         1.000            1.000              1        40.952           1.000
+           SEQ   200k_100       57.128         1.000            1.000              1        57.128           1.000
+           SEQ   400k_100      114.365         1.000            1.000              1       114.365           1.000
+           SEQ   800k_100      178.963         1.000            1.000              1       178.963           1.000
+
+Column Descriptions:
+- Best_Time_s: Fastest execution time achieved
+- Best_Speedup: Maximum speedup vs sequential
+- Best_Efficiency: Maximum parallel efficiency
+- Optimal_Cores: Core count achieving best efficiency
+- Avg_Efficiency: Average efficiency across all core counts

@@ -1,0 +1,120 @@
+K-MEANS SCALING BEHAVIOR ANALYSIS
+==================================================
+
+CUDA IMPLEMENTATION ANALYSIS:
+------------------------------
+
+MPI IMPLEMENTATION ANALYSIS:
+------------------------------
+
+Dataset: input100D
+  Scaling slope (log-log): 0.760
+  Optimal cores: 1 (efficiency: 1.124)
+  Scaling quality: Good
+  Efficiency degradation: 59.8%
+
+
+Dataset: input100D2
+  Scaling slope (log-log): 0.909
+  Optimal cores: 1 (efficiency: 1.125)
+  Scaling quality: Excellent (near-linear)
+  Efficiency degradation: 33.1%
+
+
+Dataset: 200k_100
+  Scaling slope (log-log): 0.904
+  Optimal cores: 1 (efficiency: 1.124)
+  Scaling quality: Excellent (near-linear)
+  Efficiency degradation: 35.0%
+
+
+Dataset: 400k_100
+  Scaling slope (log-log): 0.865
+  Optimal cores: 2 (efficiency: 1.125)
+  Scaling quality: Good
+  Efficiency degradation: 44.7%
+
+
+Dataset: 800k_100
+  Scaling slope (log-log): 0.920
+  Optimal cores: 1 (efficiency: 1.123)
+  Scaling quality: Excellent (near-linear)
+  Efficiency degradation: 35.0%
+
+
+MPI_OMP IMPLEMENTATION ANALYSIS:
+------------------------------
+
+Dataset: input100D
+  Scaling slope (log-log): 0.739
+  Optimal cores: 2 (efficiency: 0.943)
+  Scaling quality: Good
+  Efficiency degradation: 81.3%
+
+
+Dataset: input100D2
+  Scaling slope (log-log): 0.846
+  Optimal cores: 2 (efficiency: 0.943)
+  Scaling quality: Good
+  Efficiency degradation: 69.7%
+
+
+Dataset: 200k_100
+  Scaling slope (log-log): 0.820
+  Optimal cores: 2 (efficiency: 0.943)
+  Scaling quality: Good
+  Efficiency degradation: 71.9%
+
+
+Dataset: 400k_100
+  Scaling slope (log-log): 0.841
+  Optimal cores: 2 (efficiency: 0.944)
+  Scaling quality: Good
+  Efficiency degradation: 67.8%
+
+
+Dataset: 800k_100
+  Scaling slope (log-log): 0.832
+  Optimal cores: 2 (efficiency: 0.944)
+  Scaling quality: Good
+  Efficiency degradation: 67.0%
+
+
+OMP IMPLEMENTATION ANALYSIS:
+------------------------------
+
+Dataset: input100D
+  Scaling slope (log-log): 0.772
+  Optimal cores: 1 (efficiency: 1.112)
+  Scaling quality: Good
+  Efficiency degradation: 68.0%
+
+
+Dataset: input100D2
+  Scaling slope (log-log): 0.897
+  Optimal cores: 1 (efficiency: 1.111)
+  Scaling quality: Good
+  Efficiency degradation: 40.9%
+
+
+Dataset: 200k_100
+  Scaling slope (log-log): 0.896
+  Optimal cores: 1 (efficiency: 1.112)
+  Scaling quality: Good
+  Efficiency degradation: 40.8%
+
+
+Dataset: 400k_100
+  Scaling slope (log-log): 0.901
+  Optimal cores: 1 (efficiency: 1.113)
+  Scaling quality: Excellent (near-linear)
+  Efficiency degradation: 39.9%
+
+
+Dataset: 800k_100
+  Scaling slope (log-log): 0.902
+  Optimal cores: 1 (efficiency: 1.113)
+  Scaling quality: Excellent (near-linear)
+  Efficiency degradation: 40.4%
+
+

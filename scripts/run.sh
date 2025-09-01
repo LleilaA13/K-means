@@ -158,19 +158,19 @@ case "$CATEGORY" in
         case "$SCRIPT" in
             "log")
                 print_header "Running performance analysis"
-                exec python3 scripts/analysis/log_module.py "$@"
+                exec python scripts/analysis/log_module.py "$@"
                 ;;
             "compare")
                 print_header "Running results comparison"
-                exec python3 scripts/analysis/compare_module.py "$@"
+                exec python scripts/analysis/compare_module.py "$@"
                 ;;
             "verify"|"verify_results")
                 print_header "Running dynamic results verification"
-                exec python3 scripts/analysis/verify_results.py "$@"
+                exec python scripts/analysis/verify_results.py "$@"
                 ;;
             "plot"|"plot2d")
                 print_header "Running 2D visualization"
-                exec python3 scripts/analysis/plot2d_module.py "$@"
+                exec python scripts/analysis/plot2d_module.py "$@"
                 ;;
             "performance"|"perf"|"perf_analysis")
                 print_header "Running comprehensive performance analysis"
@@ -180,11 +180,11 @@ case "$CATEGORY" in
                     echo "  $0 slurm comp_test"
                     exit 1
                 fi
-                exec python3 scripts/analysis/performance_analysis.py "$@"
+                exec python scripts/analysis/performance_analysis.py "$@"
                 ;;
             "quick")
                 print_header "Running quick test"
-                exec python3 scripts/analysis/quick_test.py "$@"
+                exec python scripts/analysis/quick_test.py "$@"
                 ;;
             *)
                 print_error "Unknown analysis script: $SCRIPT"
