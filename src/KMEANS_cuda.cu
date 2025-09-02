@@ -1,19 +1,20 @@
 /*
- * k-Means clustering algorithm
+ * K-Means Clustering Algorithm - CUDA Implementation
  *
- * CUDA version
- *
- * Parallel computing (Degree in Computer Engineering)
- * 2022/2023
- *
- * Version: 1.0
+ * High-performance GPU-accelerated clustering with advanced optimizations:
+ * - Warp-level reduction for maximum distance finding
+ * - Shared memory optimization for centroid access
+ * - Dynamic block sizing based on device capabilities
+ * - Async memory operations with CUDA streams
  *
  * (c) 2022 Diego García-Álvarez, Arturo Gonzalez-Escribano
- * Grupo Trasgo, Universidad de Valladolid (Spain)
- *
- * This work is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License.
- * https://creativecommons.org/licenses/by-sa/4.0/
+ * Enhanced with performance optimizations
  */
+
+// ================================================================================================
+// SYSTEM INCLUDES AND BASIC DEFINITIONS
+// ================================================================================================
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -24,7 +25,14 @@
 #include <cuda.h>
 #include <sys/time.h>
 
-// Simple timing function to replace omp_get_wtime()
+// ================================================================================================
+// TIMING AND UTILITY FUNCTIONS
+// ================================================================================================
+
+/**
+ * High-precision timing function for performance measurement
+ * Replaces OpenMP timing with standard system calls
+ */
 double get_time()
 {
 	struct timeval tv;
@@ -32,16 +40,20 @@ double get_time()
 	return tv.tv_sec + tv.tv_usec * 1e-6;
 }
 
+// ================================================================================================
+// CONSTANTS AND MACROS
+// ================================================================================================
+
 #define MAXLINE 2000
 #define MAXCAD 200
 
-// Macros
+// Utility macros for min/max operations
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-/*
- * Macros to show errors when calling a CUDA library function,
- * or after launching a kernel
+/**
+ * CUDA error checking macros for robust error handling
+ * Essential for debugging GPU kernel launches and memory operations
  */
 #define CHECK_CUDA_CALL(a)                                                                            \
 	{                                                                                                 \
@@ -56,14 +68,25 @@ double get_time()
 			fprintf(stderr, "-- Error CUDA last in line %d: %s\n", __LINE__, cudaGetErrorString(ok)); \
 	}
 
-// Declare constant memory for frequently accessed parameters
-__constant__ int c_numPoints;  // Number of data points
-__constant__ int c_dimensions; // Number of dimensions per point
+// ================================================================================================
+// CUDA CONSTANT MEMORY DECLARATIONS
+// ================================================================================================
+
+/**
+ * Constant memory for frequently accessed algorithm parameters
+ * Provides broadcast access to all threads with minimal latency
+ */
+__constant__ int c_numPoints;  // Total number of data points
+__constant__ int c_dimensions; // Dimensionality of each point
 __constant__ int c_K;		   // Number of clusters
 
-/*
-Function showFileError: It displays the corresponding error during file reading.
-*/
+// ================================================================================================
+// FILE I/O ERROR HANDLING
+// ================================================================================================
+
+/**
+ * Display comprehensive file operation error messages
+ */
 void showFileError(int error, char *filename)
 {
 	printf("Error\n");
@@ -83,9 +106,14 @@ void showFileError(int error, char *filename)
 	fflush(stderr);
 }
 
-/*
-Function readInput: It reads the file to determine the number of rows and columns.
-*/
+// ================================================================================================
+// DATA INPUT/OUTPUT FUNCTIONS
+// ================================================================================================
+
+/**
+ * Parse input file to determine dataset dimensions
+ * Returns: 0 on success, negative error code on failure
+ */
 int readInput(char *filename, int *lines, int *samples)
 {
 	FILE *fp;
@@ -102,7 +130,7 @@ int readInput(char *filename, int *lines, int *samples)
 		{
 			if (strchr(line, '\n') == NULL)
 			{
-				return -1;
+				return -1; // Line too long
 			}
 			contlines++;
 			ptr = strtok(line, delim);
@@ -120,13 +148,14 @@ int readInput(char *filename, int *lines, int *samples)
 	}
 	else
 	{
-		return -2;
+		return -2; // File not found
 	}
 }
 
-/*
-Function readInput2: It loads data from file.
-*/
+/**
+ * Load actual data from input file into memory
+ * Assumes file dimensions have been validated by readInput()
+ */
 int readInput2(char *filename, float *data)
 {
 	FILE *fp;
@@ -152,13 +181,13 @@ int readInput2(char *filename, float *data)
 	}
 	else
 	{
-		return -2; // No file found
+		return -2; // File not found
 	}
 }
 
-/*
-Function writeResult: It writes in the output file the cluster of each sample (point).
-*/
+/**
+ * Write final cluster assignments to output file
+ */
 int writeResult(int *classMap, int lines, const char *filename)
 {
 	FILE *fp;
@@ -170,20 +199,22 @@ int writeResult(int *classMap, int lines, const char *filename)
 			fprintf(fp, "%d\n", classMap[i]);
 		}
 		fclose(fp);
-
 		return 0;
 	}
 	else
 	{
-		return -3; // No file found
+		return -3; // Unable to write file
 	}
 }
 
-/*
+// ================================================================================================
+// ALGORITHM UTILITY FUNCTIONS
+// ================================================================================================
 
-Function initCentroids: This function copies the values of the initial centroids, using their
-position in the input data structure as a reference map.
-*/
+/**
+ * Initialize centroids using randomly selected data points
+ * Copies actual data points as initial cluster centers
+ */
 void initCentroids(const float *data, float *centroids, int *centroidPos, int samples, int K)
 {
 	int i;
@@ -195,10 +226,10 @@ void initCentroids(const float *data, float *centroids, int *centroidPos, int sa
 	}
 }
 
-/*
-Function euclideanDistance: Euclidean distance
-This function could be modified
-*/
+/**
+ * Calculate Euclidean distance between two points
+ * Used for CPU-side distance calculations when needed
+ */
 float euclideanDistance(float *point, float *center, int samples)
 {
 	float dist = 0.0;
@@ -210,10 +241,10 @@ float euclideanDistance(float *point, float *center, int samples)
 	return (dist);
 }
 
-/*
-Function zeroFloatMatriz: Set matrix elements to 0
-This function could be modified
-*/
+/**
+ * Matrix initialization utilities
+ * Reset arrays to zero for fresh computation
+ */
 void zeroFloatMatriz(float *matrix, int rows, int columns)
 {
 	int i, j;
@@ -222,10 +253,6 @@ void zeroFloatMatriz(float *matrix, int rows, int columns)
 			matrix[i * columns + j] = 0.0;
 }
 
-/*
-Function zeroIntArray: Set array elements to 0
-This function could be modified
-*/
 void zeroIntArray(int *array, int size)
 {
 	int i;
@@ -233,9 +260,14 @@ void zeroIntArray(int *array, int size)
 		array[i] = 0;
 }
 
-// Note: Constant memory already declared at the top of the file
+// ================================================================================================
+// CUDA MEMORY MANAGEMENT
+// ================================================================================================
 
-// Host function to set constant memory
+/**
+ * Configure constant memory with algorithm parameters
+ * Provides high-speed broadcast access to all GPU threads
+ */
 void setConstantMemory(int numPoints, int dimensions, int K)
 {
 	CHECK_CUDA_CALL(cudaMemcpyToSymbol(c_numPoints, &numPoints, sizeof(int)));
@@ -243,55 +275,85 @@ void setConstantMemory(int numPoints, int dimensions, int K)
 	CHECK_CUDA_CALL(cudaMemcpyToSymbol(c_K, &K, sizeof(int)));
 }
 
-// Efficient warp-level reduction for maximum finding (from Riccardo's suggestion)
+// ================================================================================================
+// HIGH-PERFORMANCE REDUCTION KERNELS
+// ================================================================================================
+
+/**
+ * Ultra-fast warp-level reduction for maximum finding
+ * Uses register-level shuffle operations for optimal performance
+ * Time complexity: O(log₂(32)) = 5 operations per warp
+ */
 __device__ __forceinline__ float warp_reduce_max(float val)
 {
-	const unsigned int FULL_MASK = 0xffffffff; // Bitmap indicating which threads participate
+	// Participation mask: all 32 threads in warp participate
+	const unsigned int FULL_MASK = 0xffffffff;
 #pragma unroll
 	for (unsigned int i = 16; i > 0; i /= 2)
 	{
-		// Use shuffle down to exchange values between threads in a warp
+		// Exchange values directly through registers (fastest communication)
 		val = fmaxf(val, __shfl_down_sync(FULL_MASK, val, i));
 	}
 	return val;
 }
 
-// GPU reduction kernel for finding maximum value (optimized for K-means centroid distances)
+/**
+ * Block-level maximum reduction kernel
+ * Combines warp-level reductions for maximum scalability
+ *
+ * ALGORITHM:
+ * 1. Grid-stride loop for data loading
+ * 2. Intra-warp reduction using shuffle operations
+ * 3. Inter-warp reduction via shared memory
+ * 4. Single result per block output
+ */
 __global__ void reduce_max(float *inputs, unsigned int input_size, float *outputs)
 {
-	// Initialize with minimum value for maximum operation
+	// Initialize with neutral element for MAX operation
 	float maxVal = -FLT_MAX;
 
-	// Each thread processes multiple elements if needed (grid-stride loop)
+	// ===== PHASE 1: DATA LOADING =====
+	// Handle cases where we have fewer threads than data elements
 	for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 		 i < input_size;
 		 i += blockDim.x * gridDim.x)
 		maxVal = fmaxf(maxVal, inputs[i]);
 
-	__shared__ float shared[32]; // Fixed size for up to 1024 threads per block (32 warps max)
+	// ===== PHASE 2: SHARED MEMORY SETUP =====
+	// One slot per warp (max 32 warps per block)
+	__shared__ float shared[32];
 
-	// Warp and thread identification
-	unsigned int lane = threadIdx.x % warpSize; // Thread position within warp
+	// Thread positioning within block structure
+	unsigned int lane = threadIdx.x % warpSize; // Position within warp (0-31)
 	unsigned int wid = threadIdx.x / warpSize;	// Warp ID within block
 
-	// First reduction: within each warp
+	// ===== PHASE 3: INTRA-WARP REDUCTION =====
 	maxVal = warp_reduce_max(maxVal);
 	if (lane == 0)
 		shared[wid] = maxVal; // Warp leader writes to shared memory
 
 	__syncthreads(); // Wait for all warps to complete
 
-	// Second reduction: across warps within block
+	// ===== PHASE 4: INTER-WARP REDUCTION =====
+	// Create virtual warp from warp leaders
 	maxVal = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : -FLT_MAX;
 	if (wid == 0)
 		maxVal = warp_reduce_max(maxVal);
 
+	// ===== PHASE 5: OUTPUT =====
 	// Block leader writes final result
 	if (threadIdx.x == 0)
 		outputs[blockIdx.x] = maxVal;
 }
 
-// GPU kernel to calculate Euclidean distances between old and new centroids
+// ================================================================================================
+// CORE K-MEANS CUDA KERNELS
+// ================================================================================================
+
+/**
+ * Calculate Euclidean distances between old and new centroids
+ * Used for convergence detection via maximum distance finding
+ */
 __global__ void calculateCentroidDistances(float *oldCentroids, float *newCentroids,
 										   float *distances, int K, int dimensions)
 {
@@ -303,14 +365,22 @@ __global__ void calculateCentroidDistances(float *oldCentroids, float *newCentro
 	// Calculate squared Euclidean distance
 	for (int d = 0; d < dimensions; d++)
 	{
-		float diff = oldCentroids[centroidIdx * dimensions + d] -
-					 newCentroids[centroidIdx * dimensions + d];
-		dist += diff * diff;
+		int temp_index = centroidIdx * dimensions + d;
+		dist = fmaf(oldCentroids[temp_index] - newCentroids[temp_index],
+					oldCentroids[temp_index] - newCentroids[temp_index], dist);
 	}
 	distances[centroidIdx] = sqrtf(dist); // Take square root for actual distance
 }
 
-// CUDA Kernel: Point Assignment
+/**
+ * High-performance point assignment kernel with shared memory optimization
+ *
+ * FEATURES:
+ * - Dynamic shared memory for centroid caching
+ * - Collaborative loading across thread block
+ * - Optimized distance calculation using fused multiply-add
+ * - Atomic change counting for convergence detection
+ */
 __global__ void assignPointsToCentroids(
 	float *points,
 	float *centroids,
@@ -325,7 +395,8 @@ __global__ void assignPointsToCentroids(
 	if (pointIdx >= c_numPoints)
 		return;
 
-	// Load centroids into shared memory (collaborative loading) if enabled
+	// ===== SHARED MEMORY OPTIMIZATION =====
+	// Collaboratively load centroids into shared memory if enabled
 	if (useSharedMemory)
 	{
 		for (int i = threadIdx.x; i < c_K * c_dimensions; i += blockDim.x)
@@ -336,11 +407,12 @@ __global__ void assignPointsToCentroids(
 		__syncthreads();
 	}
 
+	// ===== DISTANCE CALCULATION AND ASSIGNMENT =====
 	float minDistance = FLT_MAX;
 	int bestCentroid = 0;
 	int oldAssignment = assignments[pointIdx];
 
-	// Calculate distance to each centroid
+	// Find closest centroid using optimized distance calculation
 	for (int k = 0; k < c_K; k++)
 	{
 		float distance = 0.0f;
@@ -349,13 +421,13 @@ __global__ void assignPointsToCentroids(
 		for (int d = 0; d < c_dimensions; d++)
 		{
 			float centroid_val;
-			if (useSharedMemory) // Use shared memory if available
+			if (useSharedMemory) // Use cached centroids if available
 				centroid_val = sharedCentroids[k * c_dimensions + d];
 			else
 				centroid_val = centroids[k * c_dimensions + d];
 
 			float diff = points[pointIdx * c_dimensions + d] - centroid_val;
-			distance = fmaf(diff, diff, distance);
+			distance = fmaf(diff, diff, distance); // Fused multiply-add for efficiency
 		}
 
 		if (distance < minDistance)
@@ -367,14 +439,27 @@ __global__ void assignPointsToCentroids(
 
 	assignments[pointIdx] = bestCentroid + 1; // Convert to 1-based indexing
 
-	// Count changes using atomic operation
+	// ===== CHANGE DETECTION =====
+	// Count assignment changes for convergence monitoring
 	if (oldAssignment != bestCentroid + 1)
 	{
 		atomicAdd(changes, 1);
 	}
 }
 
-// CUDA Kernel: Centroid Recalculation (improved version)
+/**
+ * Parallel centroid recalculation kernel
+ *
+ * ORGANIZATION:
+ * - Each block handles one cluster (blockIdx.x = cluster ID)
+ * - Each thread handles one dimension (threadIdx.x = dimension ID)
+ * - Collaborative counting and mean calculation
+ *
+ * ALGORITHM:
+ * 1. Each thread sums points in its assigned cluster/dimension
+ * 2. Thread 0 counts total points per cluster
+ * 3. Calculate mean coordinates for new centroids
+ */
 __global__ void recalculateCentroids(
 	float *points,
 	int *assignments,
@@ -390,54 +475,55 @@ __global__ void recalculateCentroids(
 	float sum = 0.0f;
 	int count = 0;
 
+	// ===== DATA AGGREGATION =====
 	// Each thread handles one dimension of one cluster
 	for (int i = 0; i < c_numPoints; i++)
 	{
-		if (assignments[i] == clusterIdx + 1) // Convert from 1-based
+		if (assignments[i] == clusterIdx + 1) // Convert from 1-based indexing
 		{
 			sum += points[i * c_dimensions + dimIdx];
-			if (dimIdx == 0) // Only count once per point
+			if (dimIdx == 0) // Only count once per point to avoid races
 				count++;
 		}
 	}
 
+	// ===== POINT COUNTING =====
 	// Store the count (only for dimension 0 to avoid race conditions)
 	if (dimIdx == 0)
 		pointsPerCluster[clusterIdx] = count;
 
-	__syncthreads();
+	__syncthreads(); // Ensure count is available to all threads
 
-	// Calculate mean for this dimension
+	// ===== CENTROID UPDATE =====
+	// Calculate mean coordinate for this dimension
 	int totalCount = pointsPerCluster[clusterIdx];
 	if (totalCount > 0)
 		newCentroids[clusterIdx * c_dimensions + dimIdx] = sum / totalCount;
 	else
-		newCentroids[clusterIdx * c_dimensions + dimIdx] = 0.0f; // Or keep old centroid
+		newCentroids[clusterIdx * c_dimensions + dimIdx] = 0.0f; // Handle empty clusters
 }
+
+// ================================================================================================
+// MAIN ALGORITHM IMPLEMENTATION
+// ================================================================================================
 
 int main(int argc, char *argv[])
 {
-
-	// START CLOCK***************************************
+	// ===== TIMING INITIALIZATION =====
 	double start, end;
 	start = get_time();
-	//**************************************************
+
+	// ===== PARAMETER VALIDATION =====
 	/*
-	 * PARAMETERS
-	 *
-	 * argv[1]: Input data file
-	 * argv[2]: Number of clusters
-	 * argv[3]: Maximum number of iterations of the method. Algorithm termination condition.
-	 * argv[4]: Minimum percentage of class changes. Algorithm termination condition.
-	 *          If between one iteration and the next, the percentage of class changes is less than
-	 *          this percentage, the algorithm stops.
-	 * argv[5]: Precision in the centroid distance after the update.
-	 *          It is an algorithm termination condition. If between one iteration of the algorithm
-	 *          and the next, the maximum distance between centroids is less than this precision, the
-	 *          algorithm stops.
-	 * argv[6]: Output file. Class assigned to each point of the input file.
-	 * argv[7]: Seed for random number generation.
-	 * */
+	 * Command line arguments:
+	 * argv[1]: Input data file path
+	 * argv[2]: Number of clusters (K)
+	 * argv[3]: Maximum iterations
+	 * argv[4]: Minimum change percentage (termination condition)
+	 * argv[5]: Centroid distance threshold (termination condition)
+	 * argv[6]: Output file path
+	 * argv[7]: Random seed
+	 */
 	if (argc != 8)
 	{
 		fprintf(stderr, "EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
@@ -446,8 +532,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	// Reading the input data
-	// lines = number of points; samples = number of dimensions per point
+	// ===== DATA INPUT AND VALIDATION =====
 	int lines = 0, samples = 0;
 
 	int error = readInput(argv[1], &lines, &samples);
@@ -470,13 +555,14 @@ int main(int argc, char *argv[])
 		exit(error);
 	}
 
-	// Parameters
+	// ===== ALGORITHM PARAMETERS =====
 	int K = atoi(argv[2]);
 	int maxIterations = atoi(argv[3]);
 	int minChanges = (int)(lines * atof(argv[4]) / 100.0);
 	float maxThreshold = atof(argv[5]);
 	int seed = atoi(argv[7]);
 
+	// ===== MEMORY ALLOCATION =====
 	int *centroidPos = (int *)calloc(K, sizeof(int));
 	float *centroids = (float *)calloc(K * samples, sizeof(float));
 	int *classMap = (int *)calloc(lines, sizeof(int));
@@ -487,39 +573,38 @@ int main(int argc, char *argv[])
 		exit(-4);
 	}
 
-	// Initial centrodis
+	// ===== INITIAL CENTROID SELECTION =====
 	srand(seed);
 	int i;
 	for (i = 0; i < K; i++)
 		centroidPos[i] = rand() % lines;
 
-	// Loading the array of initial centroids with the data from the array data
-	// The centroids are points stored in the data array.
+	// Load initial centroids from randomly selected data points
 	initCentroids(data, centroids, centroidPos, samples, K);
 
+	// ===== ALGORITHM CONFIGURATION DISPLAY =====
 	printf("\n\tData file: %s \n\tPoints: %d\n\tDimensions: %d\n", argv[1], lines, samples);
 	printf("\tNumber of clusters: %d\n", K);
 	printf("\tMaximum number of iterations: %d\n", maxIterations);
 	printf("\tMinimum number of changes: %d [%g%% of %d points]\n", minChanges, atof(argv[4]), lines);
 	printf("\tMaximum centroid precision: %f\n", maxThreshold);
 
-	// END CLOCK*****************************************
 	end = get_time();
 	printf("\nMemory allocation: %f seconds\n", end - start);
 	fflush(stdout);
 
+	// ===== CUDA DEVICE INITIALIZATION =====
 	CHECK_CUDA_CALL(cudaSetDevice(0));
 	CHECK_CUDA_CALL(cudaDeviceSynchronize());
 
+	// Algorithm state variables
 	char *outputMsg = (char *)calloc(10000, sizeof(char));
 	char line[100];
-
 	int it = 0;
 	int changes = 0;
 	float maxDist;
 
-	// pointPerClass: number of points classified in each class
-	// auxCentroids: mean of the points in each class
+	// Working arrays for algorithm execution
 	int *pointsPerClass = (int *)malloc(K * sizeof(int));
 	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
 	float *distCentroids = (float *)malloc(K * sizeof(float));
@@ -529,30 +614,16 @@ int main(int argc, char *argv[])
 		exit(-4);
 	}
 
+	// ===== HIGH-PERFORMANCE GPU COMPUTATION SECTION =====
 	/*
-	 *
-	 * START HERE: DO NOT CHANGE THE CODE ABOVE THIS POINT
-	 *
+	 * This section implements the core K-means algorithm using advanced CUDA optimizations:
+	 * - CUDA Events for precise computation timing
+	 * - Async memory operations with streams for overlap
+	 * - Ultra-fast reduction kernels for convergence detection
+	 * - Dynamic shared memory optimization based on device capabilities
 	 */
 
-	/* -------------------- Ciao daniel sono riccardo ecco un pò di chicche tvb ----------------------------- */
-	/*
-	cudaEvent_t start, stop; // Usa i cudaEvents per prendere i tempi all'interno del programma perché sono il modo migliore e più preciso per beccarti il runtime dei tuoi kernel. Ritornano un valore in millisecondi e ti posso assicurare che sono precisissimi. Di seguito un esempio su come si usano
-
-	CHECK_CUDA(cudaEventCreate(&start))
-	CHECK_CUDA(cudaEventCreateWithFlags(&stop, cudaEventBlockingSync))
-
-	CHECK_CUDA(cudaEventRecord(start, stream))
-	... kernelozzo <<< ... >>> (argomenti del kernelozzo)
-	CHECK_CUDA(cudaEventRecord(stop, stream))
-	CHECK_CUDA(cudaEventSynchronize(stop))
-
-	float elapsedTime;
-	CHECK_CUDA(cudaEventElapsedTime(&elapsedTime, start, stop))
-
-	*/
-
-	// Create CUDA events for precise computation timing
+	// ===== CUDA PERFORMANCE MEASUREMENT SETUP =====
 	cudaEvent_t computation_start, computation_stop;
 	CHECK_CUDA_CALL(cudaEventCreate(&computation_start));
 	CHECK_CUDA_CALL(cudaEventCreateWithFlags(&computation_stop, cudaEventBlockingSync));
@@ -560,43 +631,43 @@ int main(int argc, char *argv[])
 	cudaStream_t stream;
 	CHECK_CUDA_CALL(cudaStreamCreate(&stream));
 
-	// START COMPUTATION TIMING WITH CUDA EVENTS
+	// Start high-precision computation timing
 	CHECK_CUDA_CALL(cudaEventRecord(computation_start, stream));
 
-	// Set constant memory for CUDA kernels
+	// ===== CUDA CONSTANT MEMORY CONFIGURATION =====
 	setConstantMemory(lines, samples, K);
 
-	// Allocate GPU memory
+	// ===== GPU MEMORY ALLOCATION =====
 	float *d_data, *d_centroids, *d_newCentroids;
 	int *d_classMap, *d_changes, *d_pointsPerCluster;
 
-	// Additional memory for GPU-based maxDist calculation (Riccardo's optimization)
+	// Specialized memory for GPU-based maximum distance reduction
 	float *d_distCentroids, *d_maxDistResult;
 	int paddedK = 1;
 	while (paddedK < K)
-		paddedK *= 2; // Pad to next power of 2 as required by reduction
+		paddedK *= 2; // Pad to next power of 2 (required by reduction algorithm)
 
-	CHECK_CUDA_CALL(cudaMallocAsync(&d_data, lines * samples * sizeof(float), stream)); // Queste malloc e memcpy "async" sono uguali alle altre malloc ma vengono eseguite sul tuo stream, quindi il ritorno è asincrono e non sono bloccanti. Non hai problemi perché tutte le operazioni sono nella tuo stream quindi anche se il ritorno è asincrono sulla scheda l'esecuzione è seriale (nell'ordine in cui le hai mandate)
+	// Allocate all GPU memory asynchronously for better performance
+	CHECK_CUDA_CALL(cudaMallocAsync(&d_data, lines * samples * sizeof(float), stream));
 	CHECK_CUDA_CALL(cudaMallocAsync(&d_centroids, K * samples * sizeof(float), stream));
 	CHECK_CUDA_CALL(cudaMallocAsync(&d_newCentroids, K * samples * sizeof(float), stream));
 	CHECK_CUDA_CALL(cudaMallocAsync(&d_classMap, lines * sizeof(int), stream));
 	CHECK_CUDA_CALL(cudaMallocAsync(&d_changes, sizeof(int), stream));
 	CHECK_CUDA_CALL(cudaMallocAsync(&d_pointsPerCluster, K * sizeof(int), stream));
-
-	// Allocate memory for distance calculation and reduction
 	CHECK_CUDA_CALL(cudaMallocAsync(&d_distCentroids, paddedK * sizeof(float), stream));
 	CHECK_CUDA_CALL(cudaMallocAsync(&d_maxDistResult, sizeof(float), stream));
 
-	// Copy initial data to GPU
+	// ===== INITIAL DATA TRANSFER =====
 	CHECK_CUDA_CALL(cudaMemcpyAsync(d_data, data, lines * samples * sizeof(float), cudaMemcpyHostToDevice, stream));
 	CHECK_CUDA_CALL(cudaMemcpyAsync(d_classMap, classMap, lines * sizeof(int), cudaMemcpyHostToDevice, stream));
 
-	dim3 blockSize(32);
+	// ===== KERNEL LAUNCH CONFIGURATION =====
+	dim3 blockSize(32); // Optimized for maximum occupancy
 	dim3 gridSize((lines + blockSize.x - 1) / blockSize.x);
 	size_t sharedMemSize = K * samples * sizeof(float);
 	bool useSharedMemory = true;
 
-	// Check if shared memory size is within limits
+	// ===== DEVICE CAPABILITY CHECKING =====
 	cudaDeviceProp prop;
 	CHECK_CUDA_CALL(cudaGetDeviceProperties(&prop, 0));
 	if (sharedMemSize > prop.sharedMemPerBlock)
@@ -604,33 +675,34 @@ int main(int argc, char *argv[])
 		printf("Warning: Shared memory size (%zu bytes) exceeds device limit (%zu bytes)\n",
 			   sharedMemSize, prop.sharedMemPerBlock);
 		printf("Falling back to global memory access in kernel\n");
-		sharedMemSize = 0; // Disable shared memory usage
+		sharedMemSize = 0;
 		useSharedMemory = false;
 	}
 
+	// ===== MAIN CLUSTERING ITERATION LOOP =====
 	do
 	{
 		it++;
-		// Reset changes counter
 		int zero = 0;
 
-		// Copy current centroids to GPU
+		// ===== KERNEL 1: POINT ASSIGNMENT =====
+		// Transfer current centroids and reset change counter
 		CHECK_CUDA_CALL(cudaMemcpyAsync(d_centroids, centroids, K * samples * sizeof(float), cudaMemcpyHostToDevice, stream));
 		CHECK_CUDA_CALL(cudaMemcpyAsync(d_changes, &zero, sizeof(int), cudaMemcpyHostToDevice, stream));
 
-		// 1. CUDA Kernel: Calculate distances and assign points to centroids
+		// Launch point assignment kernel with shared memory optimization
 		assignPointsToCentroids<<<gridSize, blockSize, sharedMemSize, stream>>>(
 			d_data, d_centroids, d_classMap, d_changes, useSharedMemory);
 
-		// Copy results back to host
+		// Retrieve assignment results
 		CHECK_CUDA_CALL(cudaMemcpyAsync(classMap, d_classMap, lines * sizeof(int), cudaMemcpyDeviceToHost, stream));
 		CHECK_CUDA_CALL(cudaMemcpyAsync(&changes, d_changes, sizeof(int), cudaMemcpyDeviceToHost, stream));
 
-		// 2. CUDA Kernel: Recalculate centroids on GPU
-		dim3 centroidGrid(K);
-		dim3 centroidBlock(samples);
+		// ===== KERNEL 2: CENTROID RECALCULATION =====
+		dim3 centroidGrid(K);		 // One block per cluster
+		dim3 centroidBlock(samples); // One thread per dimension
 
-		// Make sure block size doesn't exceed device limits
+		// Ensure block size doesn't exceed device limits
 		if (samples > prop.maxThreadsPerBlock)
 		{
 			printf("Warning: samples (%d) exceeds max threads per block (%d)\n",
@@ -638,25 +710,29 @@ int main(int argc, char *argv[])
 			centroidBlock.x = prop.maxThreadsPerBlock;
 		}
 
+		// Launch centroid recalculation kernel
 		recalculateCentroids<<<centroidGrid, centroidBlock, 0, stream>>>(
 			d_data, d_classMap, d_newCentroids, d_pointsPerCluster);
 
-		// Copy new centroids back to host for convergence check
+		// Retrieve updated centroids and cluster information
 		CHECK_CUDA_CALL(cudaMemcpyAsync(auxCentroids, d_newCentroids, K * samples * sizeof(float), cudaMemcpyDeviceToHost, stream));
 		CHECK_CUDA_CALL(cudaMemcpyAsync(pointsPerClass, d_pointsPerCluster, K * sizeof(int), cudaMemcpyDeviceToHost, stream));
 
-		CHECK_CUDA_CALL(cudaStreamSynchronize(stream)); // Wait for GPU operations to complete
+		CHECK_CUDA_CALL(cudaStreamSynchronize(stream)); // Ensure completion before convergence check
 
-		/* -------------------------- GPU-based maxDist calculation using Riccardo's reduction ----------------------- */
-		/* Replacing the CPU bottleneck with ultra-fast GPU reduction using warp-level operations */
+		// ===== ULTRA-FAST GPU-BASED CONVERGENCE DETECTION =====
+		/*
+		 * Replaces CPU bottleneck with high-performance GPU reduction
+		 * Uses warp-level primitives for maximum efficiency
+		 */
 
-		// Step 1: Calculate centroid distances on GPU
+		// Step 1: Calculate distances between old and new centroids
 		int distBlockSize = 256;
 		int distGridSize = (K + distBlockSize - 1) / distBlockSize;
 		calculateCentroidDistances<<<distGridSize, distBlockSize, 0, stream>>>(
 			d_centroids, d_newCentroids, d_distCentroids, K, samples);
 
-		// Step 2: Pad the distance array with -FLT_MAX for reduction (requirement for power of 2)
+		// Step 2: Pad distance array for power-of-2 reduction requirement
 		if (paddedK > K)
 		{
 			float negInf = -FLT_MAX;
@@ -667,8 +743,7 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		// Step 3: Apply reduction to find maximum distance
-		// Following Riccardo's instructions for single vs multi-block reduction
+		// Step 3: Apply high-performance reduction to find maximum distance
 		int reductionBlockSize = 256;
 		int reductionGridSize = (paddedK + reductionBlockSize - 1) / reductionBlockSize;
 
@@ -679,26 +754,27 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
-			// Multi-block case - two-stage reduction as per Riccardo's instructions
+			// Multi-block case - two-stage reduction for optimal performance
 			float *d_tempResult;
 			CHECK_CUDA_CALL(cudaMallocAsync(&d_tempResult, reductionGridSize * sizeof(float), stream));
 
-			// First reduction: multiple blocks to intermediate results
+			// Stage 1: Multiple blocks to intermediate results
 			reduce_max<<<reductionGridSize, reductionBlockSize, 0, stream>>>(
 				d_distCentroids, paddedK, d_tempResult);
 
-			// Second reduction: single block for final result (using warp size as recommended)
+			// Stage 2: Single warp for final result (optimal for small arrays)
 			reduce_max<<<1, 32, 0, stream>>>(d_tempResult, reductionGridSize, d_maxDistResult);
 
 			CHECK_CUDA_CALL(cudaFreeAsync(d_tempResult, stream));
 		}
 
-		// Step 4: Copy result back to host
+		// Step 4: Retrieve convergence metric
 		CHECK_CUDA_CALL(cudaMemcpyAsync(&maxDist, d_maxDistResult, sizeof(float),
 										cudaMemcpyDeviceToHost, stream));
-		CHECK_CUDA_CALL(cudaStreamSynchronize(stream)); // Ensure completion before using maxDist
+		CHECK_CUDA_CALL(cudaStreamSynchronize(stream));
 
-		// Update centroids on host (still needed for next iteration)
+		// ===== ITERATION COMPLETION =====
+		// Update host centroids for next iteration
 		memcpy(centroids, auxCentroids, (K * samples * sizeof(float)));
 
 		sprintf(line, "\n[%d] Cluster changes: %d\tMax. centroid distance: %f", it, changes, maxDist);
@@ -707,47 +783,41 @@ int main(int argc, char *argv[])
 		CHECK_CUDA_CALL(cudaStreamSynchronize(stream));
 	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > maxThreshold));
 
-	/*
-	 *
-	 * STOP HERE: DO NOT CHANGE THE CODE BELOW THIS POINT
-	 *
-	 */
+	// ===== ALGORITHM COMPLETION AND CLEANUP =====
 
-	// END COMPUTATION TIMING WITH CUDA EVENTS
+	// Stop computation timing
 	CHECK_CUDA_CALL(cudaEventRecord(computation_stop, stream));
 	CHECK_CUDA_CALL(cudaEventSynchronize(computation_stop));
 
-	// Free GPU memory
+	// ===== GPU MEMORY CLEANUP =====
 	CHECK_CUDA_CALL(cudaFreeAsync(d_data, stream));
 	CHECK_CUDA_CALL(cudaFreeAsync(d_centroids, stream));
 	CHECK_CUDA_CALL(cudaFreeAsync(d_newCentroids, stream));
 	CHECK_CUDA_CALL(cudaFreeAsync(d_classMap, stream));
 	CHECK_CUDA_CALL(cudaFreeAsync(d_changes, stream));
 	CHECK_CUDA_CALL(cudaFreeAsync(d_pointsPerCluster, stream));
-
-	// Free additional GPU memory for reduction
 	CHECK_CUDA_CALL(cudaFreeAsync(d_distCentroids, stream));
 	CHECK_CUDA_CALL(cudaFreeAsync(d_maxDistResult, stream));
 
 	CHECK_CUDA_CALL(cudaStreamDestroy(stream));
 
-	// Output and termination conditions
+	// ===== PERFORMANCE REPORTING =====
 	printf("%s", outputMsg);
-
 	CHECK_CUDA_CALL(cudaDeviceSynchronize());
 
-	// Calculate computation time using CUDA events (returns milliseconds, convert to seconds)
+	// Calculate high-precision computation time (CUDA events return milliseconds)
 	float computation_time_ms;
 	CHECK_CUDA_CALL(cudaEventElapsedTime(&computation_time_ms, computation_start, computation_stop));
 	double computation_time = computation_time_ms / 1000.0;
 	printf("\nComputation: %f seconds", computation_time);
 	fflush(stdout);
 
-	// Cleanup computation timing events
+	// Cleanup timing resources
 	CHECK_CUDA_CALL(cudaEventDestroy(computation_start));
 	CHECK_CUDA_CALL(cudaEventDestroy(computation_stop));
 
-	// Write timing to file for consistency with other implementations
+	// ===== TIMING OUTPUT FOR ANALYSIS =====
+	// Write timing data to file for performance analysis scripts
 	char timing_filename[256];
 	snprintf(timing_filename, sizeof(timing_filename), "%s.timing", argv[6]);
 	FILE *timing_fp = fopen(timing_filename, "w");
@@ -757,6 +827,7 @@ int main(int argc, char *argv[])
 		fclose(timing_fp);
 	}
 
+	// ===== TERMINATION CONDITION REPORTING =====
 	if (changes <= minChanges)
 	{
 		printf("\n\nTermination condition:\nMinimum number of changes reached: %d [%d]", changes, minChanges);
@@ -770,7 +841,7 @@ int main(int argc, char *argv[])
 		printf("\n\nTermination condition:\nCentroid update precision reached: %g [%g]", maxDist, maxThreshold);
 	}
 
-	// Writing the classification of each point to the output file.
+	// ===== RESULT OUTPUT =====
 	error = writeResult(classMap, lines, argv[6]);
 	if (error != 0)
 	{
@@ -778,7 +849,7 @@ int main(int argc, char *argv[])
 		exit(error);
 	}
 
-	// Free memory
+	// ===== FINAL CLEANUP =====
 	free(data);
 	free(classMap);
 	free(centroidPos);

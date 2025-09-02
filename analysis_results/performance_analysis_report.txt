@@ -1,6 +1,6 @@
 K-MEANS PERFORMANCE ANALYSIS REPORT
 ==================================================
-Generated: 2025-09-01 02:24:40
+Generated: 2025-09-02 11:04:49
 
 DATASETS ANALYZED:
 --------------------
@@ -12,7 +12,7 @@ DATASETS ANALYZED:
 
 IMPLEMENTATIONS TESTED:
 -------------------------
-- cuda: Best speedup = 69.06x (cuda)
+- cuda: Best speedup = 104.01x (cuda)
 - mpi: Best speedup = 48.13x (64p)
 - mpi_omp: Best speedup = 45.14x (2p_32t)
 - omp: Best speedup = 42.80x (64t)
@@ -22,31 +22,31 @@ BEST PERFORMANCE PER DATASET:
 ------------------------------
 200k_100:
   Best: cuda - cuda
-  Speedup: 69.06x
-  Efficiency: 69.056
-  Time: 0.827s
+  Speedup: 96.32x
+  Efficiency: 96.316
+  Time: 0.593s
 
 400k_100:
   Best: cuda - cuda
-  Speedup: 65.67x
-  Efficiency: 65.674
-  Time: 1.741s
+  Speedup: 99.58x
+  Efficiency: 99.578
+  Time: 1.148s
 
 800k_100:
   Best: cuda - cuda
-  Speedup: 66.23x
-  Efficiency: 66.229
-  Time: 2.702s
+  Speedup: 104.01x
+  Efficiency: 104.006
+  Time: 1.721s
 
 input100D:
-  Best: mpi_omp - 2p_32t
-  Speedup: 38.63x
-  Efficiency: 0.604
-  Time: 0.034s
+  Best: cuda - cuda
+  Speedup: 40.11x
+  Efficiency: 40.109
+  Time: 0.032s
 
 input100D2:
   Best: cuda - cuda
-  Speedup: 68.55x
-  Efficiency: 68.546
-  Time: 0.597s
+  Speedup: 90.61x
+  Efficiency: 90.609
+  Time: 0.452s
 
