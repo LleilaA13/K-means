@@ -169,14 +169,14 @@ This function could be modified
 */
 float euclideanDistance(float *point, float *center, int samples)
 {
-	float dist = 0.0;
-	for (int i = 0; i < samples; i++)
+	float dist=0.0;
+	for(int i=0; i<samples; i++) 
 	{
-		dist = fmaf(point[i] - center[i], point[i] - center[i], dist);
+		dist+= (point[i]-center[i])*(point[i]-center[i]);
 	}
-	return dist; // Squared distance
+	dist = sqrt(dist);
+	return(dist);
 }
-
 /*
 Function zeroFloatMatriz: Set matrix elements to 0
 This function could be modified
