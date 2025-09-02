@@ -333,28 +333,25 @@ int main(int argc, char *argv[])
 
 	omp_set_num_threads(threads);
 
-
 	/*------------------------- Ciao --------------------------*/
 	// Trucchettino per accedere ai dati più velocemente! Salvati in un array gli indirizzi di ogni riga della tua matrice dei dati, così quando
 	// fai data[i * samples] nel loop non ti devi andare a prendere in ram l'indirizzo!. Questa cosa fa andare il tutto un pò più veloce, visto
 	// che gli indirizzi sono sempre quelli!
-	float** row_pointers = (float**) malloc(lines * sizeof(float*));
+	float **row_pointers = (float **)malloc(lines * sizeof(float *));
 
-	#		pragma omp parallel for
-		for (unsigned int row = 0; row < lines; ++row)
-		{
-			row_pointers[row] = &data[row * samples];
-		}
+#pragma omp parallel for
+	for (unsigned int row = 0; row < lines; ++row)
+	{
+		row_pointers[row] = &data[row * samples];
+	}
 
 	do
 	{
 		it++;
+		changes = 0;
 
 		// 1. Calculate the distance from each point to the centroid
 		// Assign each point to the nearest centroid.
-		changes = 0;
-
-
 #pragma omp parallel for private(i, j, class, minDist, dist) shared(data, centroids, classMap, lines, samples, K) reduction(+ : changes) schedule(dynamic, 128)
 		for (i = 0; i < lines; i++)
 		{
@@ -385,13 +382,12 @@ int main(int argc, char *argv[])
 		memset(auxCentroids, 0, K * samples * sizeof(float));
 		memset(pointsPerClass, 0, K * sizeof(int));
 
-		// Optimized approach: Use reduction and better memory management
+		// Use reduction and better memory management
 #pragma omp parallel
 		{
 			// // Thread-local arrays - allocate once per thread
 			int *local_pointsPerClass = (int *)calloc(K, sizeof(int));
 			float *local_auxCentroids = (float *)calloc(K * samples, sizeof(float));
-
 
 			// Each thread processes its portion of data with dynamic scheduling for better load balance
 #pragma omp for private(i, j, class) schedule(dynamic, 64)
@@ -407,7 +403,7 @@ int main(int argc, char *argv[])
 				}
 			}
 
-			// Optimized reduction: minimize critical section time
+			// OpenMP reduction: minimize critical section time
 #pragma omp critical
 			{
 				// Combine results efficiently - unroll when possible
@@ -442,14 +438,11 @@ int main(int argc, char *argv[])
 		}
 
 		maxDist = FLT_MIN;
-#		pragma omp parallel for reduction(max: maxDist)
+#pragma omp parallel for reduction(max : maxDist)
 		for (i = 0; i < K; i++)
 		{
 			distCentroids[i] = euclideanDistance(&centroids[i * samples], &auxCentroids[i * samples], samples);
-
-			// L'if qui era superfluo se usi la reduction(max: maxDist)
 			maxDist = distCentroids[i];
-
 		}
 		memcpy(centroids, auxCentroids, (K * samples * sizeof(float)));
 
@@ -471,10 +464,6 @@ int main(int argc, char *argv[])
 	double computation_time = end - start;
 	printf("\nComputation: %f seconds", computation_time);
 	fflush(stdout);
-
-
-
-
 
 	// Write timing to file
 	char timing_filename[256];
@@ -528,7 +517,6 @@ int main(int argc, char *argv[])
 	free(distCentroids);
 	free(pointsPerClass);
 	free(auxCentroids);
-
 
 	// END CLOCK*****************************************
 	end = omp_get_wtime();

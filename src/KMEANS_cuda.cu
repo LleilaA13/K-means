@@ -355,7 +355,7 @@ __global__ void assignPointsToCentroids(
 				centroid_val = centroids[k * c_dimensions + d];
 
 			float diff = points[pointIdx * c_dimensions + d] - centroid_val;
-			distance += diff * diff;
+			distance = fmaf(diff, diff, distance);
 		}
 
 		if (distance < minDistance)
@@ -591,8 +591,7 @@ int main(int argc, char *argv[])
 	CHECK_CUDA_CALL(cudaMemcpyAsync(d_data, data, lines * samples * sizeof(float), cudaMemcpyHostToDevice, stream));
 	CHECK_CUDA_CALL(cudaMemcpyAsync(d_classMap, classMap, lines * sizeof(int), cudaMemcpyHostToDevice, stream));
 
-	// Configure kernel launch parameters
-	dim3 blockSize(256);
+	dim3 blockSize(32);
 	dim3 gridSize((lines + blockSize.x - 1) / blockSize.x);
 	size_t sharedMemSize = K * samples * sizeof(float);
 	bool useSharedMemory = true;
@@ -612,12 +611,11 @@ int main(int argc, char *argv[])
 	do
 	{
 		it++;
+		// Reset changes counter
+		int zero = 0;
 
 		// Copy current centroids to GPU
 		CHECK_CUDA_CALL(cudaMemcpyAsync(d_centroids, centroids, K * samples * sizeof(float), cudaMemcpyHostToDevice, stream));
-
-		// Reset changes counter
-		int zero = 0;
 		CHECK_CUDA_CALL(cudaMemcpyAsync(d_changes, &zero, sizeof(int), cudaMemcpyHostToDevice, stream));
 
 		// 1. CUDA Kernel: Calculate distances and assign points to centroids

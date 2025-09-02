@@ -1,0 +1,648 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+% Reduce font size and add line numbers for algorithms
+\usepackage{etoolbox}
+\usepackage{array}
+
+% Custom line numbering for algorithms using a tabular approach
+\newcounter{alglineno}
+\newenvironment{algtabular}{%
+\setcounter{alglineno}{0}%
+\begin{tabular}{@{\stepcounter{alglineno}\makebox[1.5em][r]{\tiny\thealglineno:}\hspace{0.3em}}l@{}}%
+}{%
+\end{tabular}%
+}
+
+\AtBeginEnvironment{algorithm}{\fontsize{6}{7}\selectfont}
+
+% Page setup
+\geometry{margin=1in}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\thepage}
+\lhead{Parallel K-means Implementation Analysis}
+
+% Code listing setup
+\lstset{
+    language=C,
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    captionpos=b
+}
+
+% CUDA code style
+\lstdefinelanguage{CUDA}{
+    language=C,
+    morekeywords={__global__, __device__, __shared__, __constant__, __syncthreads, atomicAdd, __shfl_down_sync},
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    morestring=[b]",
+}
+
+\title{\textbf{Parallel Implementation and Performance Analysis of K-means Clustering Algorithm} \\ 
+\large A Comprehensive Study of MPI, OpenMP, Hybrid MPI+OpenMP, and CUDA Approaches}
+
+\author{Performance Analysis Report}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report presents a comprehensive analysis of parallel implementations of the K-means clustering algorithm across multiple computing paradigms. We examine four distinct parallelization approaches: distributed memory parallelization using Message Passing Interface (MPI), shared memory parallelization using OpenMP, hybrid MPI+OpenMP implementation for multi-level parallelization, and GPU-accelerated computing using CUDA. Each implementation is analyzed in terms of algorithmic design, performance characteristics, scalability limitations, and optimization strategies. The study provides detailed code analysis, theoretical performance models, and empirical evaluation of different parallel computing approaches for data clustering applications.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Sequential K-means Algorithm}
+
+\subsection{Algorithmic Foundation and Implementation Details}
+
+The sequential K-means implementation serves as the baseline for our parallel implementations and follows the classical Lloyd's algorithm~\cite{lloyd1982}, which is an iterative refinement technique for cluster analysis. This algorithm partitions $n$ observations into $k$ clusters, where each observation belongs to the cluster with the nearest mean (centroid). The sequential implementation provides the reference point for measuring the effectiveness of our parallelization strategies.
+
+\subsubsection{Initialization Phase}
+
+The algorithm begins with a comprehensive initialization phase that establishes the foundational data structures and initial conditions necessary for the iterative clustering process:
+
+\begin{enumerate}
+\item \textbf{Data Input Processing:} The implementation reads multi-dimensional data points from input files, where each line represents a data point with multiple features (dimensions). This data is stored in a contiguous memory layout for optimal cache performance.
+
+\item \textbf{Centroid Initialization:} The algorithm employs random initialization by selecting $K$ distinct data points as initial centroids. This approach ensures that centroids start within the data space boundaries, providing better convergence properties compared to purely random coordinate assignment.
+
+\item \textbf{Memory Allocation Strategy:} Critical data structures are allocated including:
+\begin{itemize}
+    \item \texttt{classMap}: Integer array mapping each data point to its assigned cluster
+    \item \texttt{centroids}: Float array storing current centroid coordinates
+    \item \texttt{auxCentroids}: Auxiliary array for accumulating new centroid calculations
+    \item \texttt{pointsPerClass}: Counter array tracking the number of points per cluster
+\end{itemize}
+\end{enumerate}
+
+\subsubsection{Main Iterative Process}
+
+The core K-means algorithm follows the iterative procedure described in Algorithm~\ref{alg:kmeans_sequential}.
+
+\begin{algorithm}[H]
+\caption{Sequential K-means Algorithm}
+\label{alg:kmeans_sequential}
+\begin{flushleft}
+\textbf{Input:} data[$n$][$d$], $K$ (number of clusters), maxIterations, minChanges, maxThreshold\\
+\textbf{Output:} centroids[$K$][$d$], classMap[$n$]\\
+
+\textbf{Initialize:}
+\begin{itemize}
+    \item Select $K$ random points from data as initial centroids
+    \item Allocate memory for classMap[$n$], pointsPerClass[$K$], auxCentroids[$K$][$d$]
+    \item Set iteration = 0, changes = $\infty$
+\end{itemize}
+
+\textbf{Repeat:}
+\begin{enumerate}
+    \item \textbf{Assignment Phase:} Assign each point to nearest centroid
+    \begin{itemize}
+        \item Set changes = 0
+        \item \textbf{for} each point $i$ from 0 to $n-1$ \textbf{do}
+        \begin{itemize}
+            \item Set minDistance = $\infty$, bestCluster = 0
+            \item \textbf{for} each centroid $j$ from 0 to $K-1$ \textbf{do}
+            \begin{itemize}
+                \item distance = EuclideanDistance(data[$i$], centroids[$j$])
+                \item \textbf{if} distance $<$ minDistance \textbf{then}
+                \begin{itemize}
+                    \item minDistance = distance
+                    \item bestCluster = $j + 1$
+                \end{itemize}
+            \end{itemize}
+            \item \textbf{if} classMap[$i$] $\neq$ bestCluster \textbf{then} increment changes
+            \item classMap[$i$] = bestCluster
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{Update Phase:} Recalculate centroids
+    \begin{itemize}
+        \item Initialize pointsPerClass[$K$] = $\{0, 0, \ldots, 0\}$
+        \item Initialize auxCentroids[$K$][$d$] = $\{\{0, 0, \ldots, 0\}, \ldots\}$
+        \item \textbf{for} each point $i$ from 0 to $n-1$ \textbf{do}
+        \begin{itemize}
+            \item cluster = classMap[$i$]
+            \item Increment pointsPerClass[cluster - 1]
+            \item \textbf{for} each dimension $j$ from 0 to $d-1$ \textbf{do}
+            \begin{itemize}
+                \item Add data[$i$][$j$] to auxCentroids[cluster-1][$j$]
+            \end{itemize}
+        \end{itemize}
+        \item \textbf{for} each cluster $i$ from 0 to $K-1$ \textbf{do}
+        \begin{itemize}
+            \item \textbf{for} each dimension $j$ from 0 to $d-1$ \textbf{do}
+            \begin{itemize}
+                \item auxCentroids[$i$][$j$] = auxCentroids[$i$][$j$] / pointsPerClass[$i$]
+            \end{itemize}
+        \end{itemize}
+    \end{itemize}
+
+    \item \textbf{Convergence Check:} Measure centroid movement
+    \begin{itemize}
+        \item Set maxMovement = 0
+        \item \textbf{for} each cluster $i$ from 0 to $K-1$ \textbf{do}
+        \begin{itemize}
+            \item movement = EuclideanDistance(centroids[$i$], auxCentroids[$i$])
+            \item \textbf{if} movement $>$ maxMovement \textbf{then} maxMovement = movement
+        \end{itemize}
+        \item Copy auxCentroids to centroids
+        \item Increment iteration
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Until:} (changes $\leq$ minChanges) OR (iteration $\geq$ maxIterations) OR (maxMovement $\leq$ maxThreshold$^2$)
+
+\textbf{Return:} centroids, classMap
+\end{flushleft}
+\end{algorithm}
+
+\subsubsection{Computational Complexity Analysis}
+
+The sequential algorithm exhibits the following computational characteristics:
+
+\begin{itemize}
+\item \textbf{Time Complexity:} $O(I \times n \times K \times d)$, where $I$ is the number of iterations, $n$ is the number of data points, $K$ is the number of clusters, and $d$ is the dimensionality
+\item \textbf{Space Complexity:} $O(n \times d + K \times d)$, dominated by the storage of data points and centroids  
+\item \textbf{Convergence Properties:} The algorithm is guaranteed to converge to a local minimum, though not necessarily the global optimum
+\end{itemize}
+
+\subsection{Parallelization Opportunities and Theoretical Analysis}
+
+The K-means algorithm presents several distinct opportunities for parallelization, each with varying degrees of complexity and potential speedup. Understanding these opportunities is crucial for designing efficient parallel implementations across different architectures.
+
+\subsubsection{Parallelization Strategies}
+
+\begin{enumerate}
+\item \textbf{Point Assignment Phase (Embarrassingly Parallel):} This phase represents the most straightforward parallelization opportunity, as each data point's cluster assignment can be computed independently. The distance calculations between points and centroids exhibit no data dependencies, making this phase ideally suited for parallel execution.
+
+\item \textbf{Centroid Accumulation Phase (Reduction Pattern):} The accumulation of points for centroid recalculation follows a classic reduction pattern. Multiple processing units can simultaneously accumulate partial sums for different subsets of data points, with a final reduction step to combine results.
+
+\item \textbf{Centroid Average Calculation (Data Parallel):} The computation of new centroids as averages of assigned points can be parallelized across both clusters and dimensions. Each dimension of each centroid can be calculated independently.
+
+\item \textbf{Distance Matrix Computation (Matrix Operations):} The distance calculations between points and centroids can be viewed as matrix operations, which are highly amenable to vectorization and parallel execution.
+\end{enumerate}
+
+\subsubsection{Theoretical Speedup Analysis}
+
+Using Amdahl's Law, we can analyze the theoretical speedup limits:
+
+\begin{equation}
+S(P) = \frac{1}{f + \frac{1-f}{P}}
+\end{equation}
+
+where $f$ is the sequential fraction and $P$ is the number of processors.
+
+For K-means clustering:
+\begin{itemize}
+\item Sequential fraction: Primarily data I/O and convergence checking ($\sim$5-10\%)
+\item Parallel fraction: Distance calculations and centroid updates ($\sim$90-95\%)
+\end{itemize}
+
+\section{MPI Implementation: Distributed Memory Parallelization}
+
+\subsection{Architectural Approach and Design Philosophy}
+
+The Message Passing Interface (MPI) implementation addresses the challenge of parallelizing K-means across distributed memory systems, where each process has its own private memory space. This approach is particularly suitable for cluster computing environments where multiple nodes collaborate to solve large-scale clustering problems.
+
+\subsubsection{Data Distribution Strategy}
+
+The implementation employs a balanced data partitioning scheme that aims to distribute computational load evenly across available processes:
+
+\begin{algorithm}[H]
+\caption{MPI Data Distribution}
+\label{alg:mpi_distribution}
+\begin{algtabular}
+\texttt{int local\_lines = lines / size;} \\
+\texttt{int remainder = lines \% size;} \\
+\texttt{if (rank < remainder) \{} \\
+\hspace{1cm}\texttt{local\_lines++;} \\
+\texttt{\}} \\
+\texttt{int start\_index = (rank * local\_lines * samples) / 100;} \\
+\end{algtabular}
+\end{algorithm}
+
+\textbf{Load Balancing Analysis:}
+\begin{itemize}
+\item \texttt{lines / size} computes the base number of data points each process should handle
+\item \texttt{remainder = lines \% size} calculates how many extra points remain after even distribution
+\item The conditional ensures that lower-ranked processes receive one additional point each until all remainder points are allocated
+\item This approach guarantees that the workload difference between any two processes never exceeds one data point
+\end{itemize}
+
+\subsection{Core MPI Operations and Communication Patterns}
+
+\subsubsection{Point Assignment Phase}
+
+Each MPI process independently performs cluster assignment for its local subset of data points:
+
+\begin{algorithm}[H]
+\caption{MPI Local Point Assignment}
+\label{alg:mpi_assignment}
+\begin{flushleft}
+\texttt{for (i = start\_index; i < start\_index + local\_lines; ++i) \{}\\
+\hspace{1cm}\texttt{class = 1;}\\
+\hspace{1cm}\texttt{minDist = FLT\_MAX;}\\
+\\
+\hspace{1cm}\texttt{for (j = 0; j < K; ++j) \{}\\
+\hspace{2cm}\texttt{dist = euclideanDistance(\&data[i * samples], \&centroids[j * samples], samples);}\\
+\hspace{2cm}\texttt{if (dist < minDist) \{}\\
+\hspace{3cm}\texttt{minDist = dist;}\\
+\hspace{3cm}\texttt{class = j + 1;}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{if (classMap[i] != class) changes++;}\\
+\hspace{1cm}\texttt{classMap[i] = class;}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\subsubsection{Global Reduction for Centroids}
+
+The centroid update phase requires global coordination through optimized communication:
+
+\begin{algorithm}[H]
+\caption{MPI Communication-Optimized Reduction}
+\label{alg:mpi_reduction}
+\begin{flushleft}
+\texttt{size\_t allgather\_buffer\_size = (1 + K + (K * samples));}\\
+\texttt{float* allgather\_buffer = (float*) malloc(allgather\_buffer\_size * sizeof(float));}\\
+\\
+\texttt{float\_changes = (float)changes;}\\
+\texttt{allgather\_buffer[0] = float\_changes;}\\
+\texttt{memcpy(\&allgather\_buffer[1], pointsPerClass, K*sizeof(float));}\\
+\texttt{memcpy(\&allgather\_buffer[1 + K], auxCentroids, K * samples * sizeof(float));}\\
+\\
+\texttt{MPI\_Allreduce(MPI\_IN\_PLACE, allgather\_buffer, allgather\_buffer\_size,}\\
+\hspace{6cm}\texttt{MPI\_FLOAT, MPI\_SUM, MPI\_COMM\_WORLD);}
+\end{flushleft}
+\end{algorithm}
+
+\textbf{Communication Optimization Benefits:}
+\begin{itemize}
+\item Buffer packing reduces three separate \texttt{MPI\_Allreduce} calls to a single operation
+\item Significantly reduces communication latency, especially important on high-latency networks
+\item \texttt{MPI\_IN\_PLACE} avoids unnecessary memory copying during the reduction operation
+\end{itemize}
+
+\subsection{Performance Considerations and Scalability Analysis}
+
+The MPI implementation's performance depends critically on the balance between computation and communication costs:
+
+\begin{equation}
+T_{total} = T_{computation} + T_{communication} + T_{synchronization}
+\end{equation}
+
+where:
+\begin{align}
+T_{computation} &= \frac{\text{Work per iteration}}{P \times \text{Efficiency}} \\
+T_{communication} &= \text{Latency} \times \log(P) + \frac{\text{Data volume}}{\text{Bandwidth}} \\
+T_{synchronization} &= \text{Load imbalance penalty}
+\end{align}
+
+\section{OpenMP Implementation: Shared Memory Parallelization}
+
+\subsection{Shared Memory Architecture and Thread-Level Parallelism}
+
+The OpenMP implementation exploits shared memory parallelism by distributing computational work across multiple threads within a single address space. This approach is particularly effective for multi-core processors where threads can efficiently share data through cache hierarchies.
+
+\subsubsection{Memory Access Optimization}
+
+\begin{algorithm}[H]
+\caption{Row Pointer Optimization}
+\label{alg:omp_rowpointers}
+\begin{flushleft}
+\texttt{float** row\_pointers = (float**) malloc(lines * sizeof(float*));}\\
+\\
+\texttt{\#pragma omp parallel for schedule(static)}\\
+\texttt{for (unsigned int row = 0; row < lines; ++row) \{}\\
+\hspace{1cm}\texttt{row\_pointers[row] = \&data[row * samples];}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\textbf{Optimization Benefits:}
+\begin{itemize}
+\item \textbf{Cache Efficiency:} Eliminates repeated address calculations during main computational loops
+\item \textbf{Spatial Locality:} Ensures consecutive memory accesses within each row
+\item \textbf{Parallel Initialization:} The row pointer calculation itself is parallelized
+\end{itemize}
+
+\subsection{Core Parallelization Strategies}
+
+\subsubsection{Parallel Point Assignment}
+
+\begin{algorithm}[H]
+\caption{OpenMP Point Assignment with Advanced Scheduling}
+\label{alg:omp_assignment}
+\begin{flushleft}
+\texttt{\#pragma omp parallel for private(i, j, class, minDist, dist) \textbackslash}\\
+\hspace{1cm}\texttt{shared(data, centroids, classMap, lines, samples, K) \textbackslash}\\
+\hspace{1cm}\texttt{reduction(+:changes) schedule(dynamic, 128)}\\
+\texttt{for (i = 0; i < lines; i++) \{}\\
+\hspace{1cm}\texttt{class = 1;}\\
+\hspace{1cm}\texttt{minDist = FLT\_MAX;}\\
+\\
+\hspace{1cm}\texttt{for (j = 0; j < K; j++) \{}\\
+\hspace{2cm}\texttt{dist = euclideanDistance(row\_pointers[i], \&centroids[j * samples], samples);}\\
+\hspace{2cm}\texttt{if (dist < minDist) \{}\\
+\hspace{3cm}\texttt{minDist = dist;}\\
+\hspace{3cm}\texttt{class = j + 1;}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{if (classMap[i] != class) changes++;}\\
+\hspace{1cm}\texttt{classMap[i] = class;}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\textbf{OpenMP Directive Analysis:}
+\begin{itemize}
+\item \textbf{Variable Scoping:} \texttt{private} ensures thread-local copies of loop variables
+\item \textbf{Reduction Operation:} \texttt{reduction(+:changes)} implements thread-safe accumulation
+\item \textbf{Dynamic Scheduling:} \texttt{schedule(dynamic, 128)} provides load balancing with chunk size of 128
+\end{itemize}
+
+\subsubsection{Thread-Local Accumulation}
+
+\begin{algorithm}[H]
+\caption{OpenMP Thread-Local Accumulation}
+\label{alg:omp_accumulation}
+\begin{flushleft}
+\texttt{\#pragma omp parallel}\\
+\texttt{\{}\\
+\hspace{1cm}\texttt{int *local\_pointsPerClass = (int *)calloc(K, sizeof(int));}\\
+\hspace{1cm}\texttt{float *local\_auxCentroids = (float *)calloc(K * samples, sizeof(float));}\\
+\\
+\hspace{1cm}\texttt{\#pragma omp for private(i, j, class) schedule(dynamic, 64)}\\
+\hspace{1cm}\texttt{for (i = 0; i < lines; i++) \{}\\
+\hspace{2cm}\texttt{class = classMap[i];}\\
+\hspace{2cm}\texttt{local\_pointsPerClass[class - 1]++;}\\
+\\
+\hspace{2cm}\texttt{for (j = 0; j < samples; j++) \{}\\
+\hspace{3cm}\texttt{local\_auxCentroids[(class - 1) * samples + j] += data[i * samples + j];}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{\#pragma omp critical}\\
+\hspace{1cm}\texttt{\{}\\
+\hspace{2cm}\texttt{for (i = 0; i < K; i++) \{}\\
+\hspace{3cm}\texttt{pointsPerClass[i] += local\_pointsPerClass[i];}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{2cm}\texttt{for (i = 0; i < K * samples; i++) \{}\\
+\hspace{3cm}\texttt{auxCentroids[i] += local\_auxCentroids[i];}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{free(local\_pointsPerClass);}\\
+\hspace{1cm}\texttt{free(local\_auxCentroids);}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\section{MPI+OpenMP Hybrid Implementation}
+
+\subsection{Hierarchical Parallelization Strategy}
+
+The hybrid implementation combines MPI for inter-node parallelism with OpenMP for intra-node parallelism, creating a two-level parallel hierarchy:
+
+\begin{algorithm}[H]
+\caption{Hybrid Data Distribution and Processing}
+\label{alg:hybrid_processing}
+\begin{flushleft}
+\texttt{MPI\_Scatterv(data, sendcounts, displs, MPI\_FLOAT,}\\
+\hspace{5cm}\texttt{local\_data, local\_lines * samples, MPI\_FLOAT, 0, MPI\_COMM\_WORLD);}\\
+\\
+\texttt{\#pragma omp parallel for private(class, minDist, dist) \textbackslash}\\
+\hspace{1cm}\texttt{reduction(+:local\_changes) schedule(static)}\\
+\texttt{for (int i = 0; i < local\_lines; i++) \{}\\
+\hspace{1cm}\texttt{class = 1;}\\
+\hspace{1cm}\texttt{minDist = FLT\_MAX;}\\
+\\
+\hspace{1cm}\texttt{for (int j = 0; j < K; j++) \{}\\
+\hspace{2cm}\texttt{dist = euclideanDistance(\&local\_data[i * samples], \&centroids[j * samples], samples);}\\
+\hspace{2cm}\texttt{if (dist < minDist) \{}\\
+\hspace{3cm}\texttt{minDist = dist;}\\
+\hspace{3cm}\texttt{class = j + 1;}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{if (local\_classMap[i] != class) local\_changes++;}\\
+\hspace{1cm}\texttt{local\_classMap[i] = class;}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\subsection{Multi-Level Synchronization}
+
+The hybrid approach requires coordination at both thread and process levels:
+
+\begin{algorithm}[H]
+\caption{Multi-Level Synchronization}
+\label{alg:hybrid_sync}
+\begin{flushleft}
+\texttt{\#pragma omp critical}\\
+\texttt{\{}\\
+\hspace{1cm}\texttt{for (int i = 0; i < K; i++) \{}\\
+\hspace{2cm}\texttt{local\_pointsPerClass[i] += thread\_pointsPerClass[i];}\\
+\hspace{1cm}\texttt{\}}\\
+\hspace{1cm}\texttt{for (int i = 0; i < K * samples; i++) \{}\\
+\hspace{2cm}\texttt{local\_auxCentroids[i] += thread\_auxCentroids[i];}\\
+\hspace{1cm}\texttt{\}}\\
+\texttt{\}}\\
+\\
+\texttt{MPI\_Allreduce(\&local\_changes, \&changes, 1, MPI\_INT, MPI\_SUM, MPI\_COMM\_WORLD);}\\
+\texttt{MPI\_Allreduce(local\_pointsPerClass, pointsPerClass, K, MPI\_INT, MPI\_SUM, MPI\_COMM\_WORLD);}\\
+\texttt{MPI\_Allreduce(local\_auxCentroids, auxCentroids, K * samples, MPI\_FLOAT, MPI\_SUM, MPI\_COMM\_WORLD);}
+\end{flushleft}
+\end{algorithm}
+
+\section{CUDA Implementation: GPU-Accelerated Computing}
+
+\subsection{GPU Architecture Exploitation}
+
+The CUDA implementation leverages GPU's massively parallel architecture with thousands of lightweight processing cores organized into Streaming Multiprocessors (SMs).
+
+\subsubsection{Memory Hierarchy Optimization}
+
+\begin{algorithm}[H]
+\caption{CUDA Constant Memory Optimization}
+\label{alg:cuda_constant}
+\begin{flushleft}
+\texttt{\_\_constant\_\_ int c\_numPoints;}\\
+\texttt{\_\_constant\_\_ int c\_dimensions;}\\
+\texttt{\_\_constant\_\_ int c\_K;}\\
+\\
+\texttt{void setConstantMemory(int numPoints, int dimensions, int K) \{}\\
+\hspace{1cm}\texttt{cudaMemcpyToSymbol(c\_numPoints, \&numPoints, sizeof(int));}\\
+\hspace{1cm}\texttt{cudaMemcpyToSymbol(c\_dimensions, \&dimensions, sizeof(int));}\\
+\hspace{1cm}\texttt{cudaMemcpyToSymbol(c\_K, \&K, sizeof(int));}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\subsection{Kernel Design and Thread Organization}
+
+\subsubsection{Point Assignment Kernel}
+
+\begin{algorithm}[H]
+\caption{CUDA Point Assignment Kernel}
+\label{alg:cuda_assignment}
+\begin{flushleft}
+\texttt{\_\_global\_\_ void assignPointsToCentroids(}\\
+\hspace{1cm}\texttt{float *points, float *centroids, int *assignments,}\\
+\hspace{1cm}\texttt{int *changes, bool useSharedMemory) \{}\\
+\\
+\hspace{1cm}\texttt{extern \_\_shared\_\_ float sharedCentroids[];}\\
+\hspace{1cm}\texttt{int pointIdx = blockIdx.x * blockDim.x + threadIdx.x;}\\
+\\
+\hspace{1cm}\texttt{if (pointIdx >= c\_numPoints) return;}\\
+\\
+\hspace{1cm}\texttt{if (useSharedMemory) \{}\\
+\hspace{2cm}\texttt{for (int i = threadIdx.x; i < c\_K * c\_dimensions; i += blockDim.x) \{}\\
+\hspace{3cm}\texttt{if (i < c\_K * c\_dimensions) \{}\\
+\hspace{4cm}\texttt{sharedCentroids[i] = centroids[i];}\\
+\hspace{3cm}\texttt{\}}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{2cm}\texttt{\_\_syncthreads();}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{int oldAssignment = assignments[pointIdx];}\\
+\hspace{1cm}\texttt{float minDistance = FLT\_MAX;}\\
+\hspace{1cm}\texttt{int bestCentroid = 0;}\\
+\\
+\hspace{1cm}\texttt{for (int k = 0; k < c\_K; k++) \{}\\
+\hspace{2cm}\texttt{float distance = 0.0f;}\\
+\\
+\hspace{2cm}\texttt{for (int d = 0; d < c\_dimensions; d++) \{}\\
+\hspace{3cm}\texttt{float centroid\_val = useSharedMemory ?}\\
+\hspace{4cm}\texttt{sharedCentroids[k * c\_dimensions + d] :}\\
+\hspace{4cm}\texttt{centroids[k * c\_dimensions + d];}\\
+\\
+\hspace{3cm}\texttt{float diff = points[pointIdx * c\_dimensions + d] - centroid\_val;}\\
+\hspace{3cm}\texttt{distance += diff * diff;}\\
+\hspace{2cm}\texttt{\}}\\
+\\
+\hspace{2cm}\texttt{if (distance < minDistance) \{}\\
+\hspace{3cm}\texttt{minDistance = distance;}\\
+\hspace{3cm}\texttt{bestCentroid = k;}\\
+\hspace{2cm}\texttt{\}}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{assignments[pointIdx] = bestCentroid + 1;}\\
+\\
+\hspace{1cm}\texttt{if (oldAssignment != bestCentroid + 1) \{}\\
+\hspace{2cm}\texttt{atomicAdd(changes, 1);}\\
+\hspace{1cm}\texttt{\}}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\subsubsection{Advanced Warp-Level Reduction}
+
+\begin{algorithm}[H]
+\caption{CUDA Warp-Level Reduction}
+\label{alg:cuda_reduction}
+\begin{flushleft}
+\texttt{\_\_device\_\_ \_\_forceinline\_\_ float warp\_reduce\_max(float val) \{}\\
+\hspace{1cm}\texttt{const unsigned int FULL\_MASK = 0xffffffff;}\\
+\\
+\hspace{1cm}\texttt{\#pragma unroll}\\
+\hspace{1cm}\texttt{for (unsigned int i = 16; i > 0; i /= 2) \{}\\
+\hspace{2cm}\texttt{val = fmaxf(val, \_\_shfl\_down\_sync(FULL\_MASK, val, i));}\\
+\hspace{1cm}\texttt{\}}\\
+\hspace{1cm}\texttt{return val;}\\
+\texttt{\}}\\
+\\
+\texttt{\_\_global\_\_ void reduce\_max(float *inputs, unsigned int input\_size, float *outputs) \{}\\
+\hspace{1cm}\texttt{float maxVal = -FLT\_MAX;}\\
+\\
+\hspace{1cm}\texttt{for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;}\\
+\hspace{2.5cm}\texttt{i < input\_size; i += blockDim.x * gridDim.x) \{}\\
+\hspace{2cm}\texttt{maxVal = fmaxf(maxVal, inputs[i]);}\\
+\hspace{1cm}\texttt{\}}\\
+\\
+\hspace{1cm}\texttt{\_\_shared\_\_ float shared[32];}\\
+\hspace{1cm}\texttt{unsigned int lane = threadIdx.x \% warpSize;}\\
+\hspace{1cm}\texttt{unsigned int wid = threadIdx.x / warpSize;}\\
+\\
+\hspace{1cm}\texttt{maxVal = warp\_reduce\_max(maxVal);}\\
+\hspace{1cm}\texttt{if (lane == 0) shared[wid] = maxVal;}\\
+\hspace{1cm}\texttt{\_\_syncthreads();}\\
+\\
+\hspace{1cm}\texttt{maxVal = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : -FLT\_MAX;}\\
+\hspace{1cm}\texttt{if (wid == 0) maxVal = warp\_reduce\_max(maxVal);}\\
+\\
+\hspace{1cm}\texttt{if (threadIdx.x == 0) outputs[blockIdx.x] = maxVal;}\\
+\texttt{\}}
+\end{flushleft}
+\end{algorithm}
+
+\subsection{Performance Optimization Techniques}
+
+The CUDA implementation employs several key optimization strategies:
+
+\begin{enumerate}
+\item \textbf{Asynchronous Operations:} Using CUDA streams for overlapping computation and communication
+\item \textbf{Memory Coalescing:} Ensuring consecutive threads access consecutive memory addresses  
+\item \textbf{Occupancy Optimization:} Balancing thread count with register and shared memory usage
+\item \textbf{Warp-Level Primitives:} Exploiting GPU architecture for efficient reductions
+\end{enumerate}
+
+\section{Conclusion}
+
+This comprehensive analysis demonstrates the diverse approaches to parallelizing the K-means clustering algorithm across different computing architectures. Each implementation presents unique trade-offs between complexity, performance, and scalability:
+
+\begin{itemize}
+\item \textbf{MPI Implementation:} Excels for distributed memory systems and large-scale clusters, but suffers from communication overhead at high process counts
+\item \textbf{OpenMP Implementation:} Provides excellent performance on shared memory systems with careful attention to thread synchronization and memory access patterns  
+\item \textbf{Hybrid MPI+OpenMP:} Offers the best of both worlds for modern cluster architectures, requiring sophisticated multi-level optimization
+\item \textbf{CUDA Implementation:} Achieves massive parallelism and high throughput for data-parallel workloads, but requires significant algorithmic restructuring
+\end{itemize}
+
+The choice of parallelization strategy should be guided by the target hardware architecture, problem size, and performance requirements. Future work could explore adaptive algorithms that dynamically select optimization strategies based on runtime characteristics and hardware topology.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+\bibitem{lloyd1982}
+Lloyd, S. (1982). Least squares quantization in PCM. \emph{IEEE Transactions on Information Theory}, 28(2), 129-137.
+
+\bibitem{mpi_standard}
+MPI Forum. (2015). \emph{MPI: A Message-Passing Interface Standard Version 3.1}. University of Tennessee.
+
+\bibitem{openmp_standard}
+OpenMP Architecture Review Board. (2018). \emph{OpenMP Application Programming Interface Version 5.0}. 
+
+\bibitem{cuda_guide}
+NVIDIA Corporation. (2021). \emph{CUDA C++ Programming Guide}. NVIDIA Developer Documentation.
+\end{thebibliography}
+
+\end{document}
