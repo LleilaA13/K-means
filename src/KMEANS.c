@@ -174,7 +174,7 @@ float euclideanDistance(float *point, float *center, int samples)
 	{
 		dist+= (point[i]-center[i])*(point[i]-center[i]);
 	}
-	dist = sqrt(dist);
+	//dist = sqrt(dist);
 	return(dist);
 }
 /*
