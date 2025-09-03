@@ -736,11 +736,8 @@ int main(int argc, char *argv[])
 		if (paddedK > K)
 		{
 			float negInf = -FLT_MAX;
-			for (int i = K; i < paddedK; i++)
-			{
-				CHECK_CUDA_CALL(cudaMemcpyAsync(&d_distCentroids[i], &negInf, sizeof(float),
-												cudaMemcpyHostToDevice, stream));
-			}
+			CHECK_CUDA_CALL(cudaMemcpyAsync(&d_distCentroids[K], &negInf, (paddedK - K) * sizeof(float),
+											cudaMemcpyHostToDevice, stream));
 		}
 
 		// Step 3: Apply high-performance reduction to find maximum distance

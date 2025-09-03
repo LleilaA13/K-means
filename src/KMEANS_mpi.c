@@ -315,7 +315,7 @@ int main(int argc, char *argv[])
 	// pointPerClass: number of points classified in each class
 	// auxCentroids: mean of the points in each class
 	// int *pointsPerClass = (int *)malloc(K * sizeof(int));
-	float* pointsPerClass = (float*) malloc(K * sizeof(float)); // Allora qui pointsPerClass lo alloco come un array di float perché è più comodo per la Allreduce e perché il valore verrebbe comunque castato a float quando si dividono gli auxCentroids per i pointsPerClass!
+	float *pointsPerClass = (float *)malloc(K * sizeof(float)); // Allora qui pointsPerClass lo alloco come un array di float perché è più comodo per la Allreduce e perché il valore verrebbe comunque castato a float quando si dividono gli auxCentroids per i pointsPerClass!
 	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
 	float *distCentroids = (float *)malloc(K * sizeof(float));
 	if (pointsPerClass == NULL || auxCentroids == NULL || distCentroids == NULL)
@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
 	// Ho dovuto commentare questa cosa perché mi mandava tutto in segfault. Sempre per il concetto che se rank è una potenza di 2 allora
 	// reminder è sempre 0. L'ho sostituito semplicemente con la logica qui sotto.
 	// Perché devo dividere start_index per 100??? non lo so ma se non lo faccio il valore è sbagliato :/ bonus di un caffè se lo scopri
-	start_index = (rank * local_lines * samples)/100;
+	start_index = (rank * local_lines * samples) / 100;
 	// if (rank < remainder)
 	// {
 	// 	start_index = rank * local_lines * samples; // start_index is the starting element index, not row
@@ -378,7 +378,7 @@ int main(int argc, char *argv[])
 	printf("rank %d here, start_index = %d\n", rank, start_index);
 
 	size_t allgather_buffer_size = (1 + K + (K * samples)); // questo è size_t perché sizeof() ritorna un valore size_t quindi in realtà le variabili che rappresentano il numero di bytes occupati da un array dovrebbero essere sempre size_t (che praticamente è un unsigned long int)
-	float* allgather_buffer = (float*) malloc(allgather_buffer_size * sizeof(float));
+	float *allgather_buffer = (float *)malloc(allgather_buffer_size * sizeof(float));
 
 	do
 	{
@@ -422,7 +422,6 @@ int main(int argc, char *argv[])
 		for (i = start_index; i < start_index + local_lines; ++i)
 		{
 			class = classMap[i];
-			// pointsPerClass[class - 1] += 1;
 			pointsPerClass[class - 1] += 1.0f;
 			for (j = 0; j < samples; j++)
 			{
@@ -434,7 +433,7 @@ int main(int argc, char *argv[])
 		// Per ridurre l'overhead della Allreduce, fai un buffer unico e manda solo quello!
 		float_changes = (float)changes;
 		allgather_buffer[0] = float_changes;
-		memcpy(&allgather_buffer[1], pointsPerClass, K*sizeof(float));
+		memcpy(&allgather_buffer[1], pointsPerClass, K * sizeof(float));
 		memcpy(&allgather_buffer[1 + K], auxCentroids, K * samples * sizeof(float));
 
 		MPI_Allreduce(MPI_IN_PLACE, allgather_buffer, allgather_buffer_size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
@@ -442,7 +441,6 @@ int main(int argc, char *argv[])
 		changes = (int)allgather_buffer[0];
 		memcpy(pointsPerClass, &allgather_buffer[1], K * sizeof(float));
 		memcpy(auxCentroids, &allgather_buffer[1 + K], K * samples * sizeof(float));
-
 
 		for (i = 0; i < K; i++)
 		{
@@ -474,8 +472,8 @@ int main(int argc, char *argv[])
 	// Gather classMaps from all processes. but the processes have different local_classMap sizes
 	// use Gatherv
 
-	int* recvcounts = (int*)malloc(size * sizeof(int)); // Number of elements to receive from each process
-	int* displs = (int *)malloc(size * sizeof(int));	 // Displacements for each process
+	int *recvcounts = (int *)malloc(size * sizeof(int)); // Number of elements to receive from each process
+	int *displs = (int *)malloc(size * sizeof(int));	 // Displacements for each process
 
 	MPI_Gather(&local_lines, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, MPI_COMM_WORLD); // Gather local line counts
 
