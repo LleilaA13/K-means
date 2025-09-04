@@ -72,7 +72,7 @@ echo "=== Building CUDA Executable ==="
 # Build CUDA version (targeting RTX Quadro 6000 - sm_75, same as original cuda script)
 if [ ! -f "build/KMEANS_cuda" ]; then
     echo "Building CUDA version..."
-    nvcc -O3 -arch=sm_75 src/KMEANS_cuda.cu -lm -o build/KMEANS_cuda
+    nvcc -arch=sm_75 src/KMEANS_cuda.cu -lm -o build/KMEANS_cuda
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build CUDA version"
         exit 1

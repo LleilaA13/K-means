@@ -76,7 +76,7 @@ echo "" >> logs/slurm_performance_results.txt
 if [ ! -f "build/KMEANS_omp" ]; then
     echo "Building K-means OpenMP version..."
     mkdir -p build
-    gcc -O3 -Wall -fopenmp src/KMEANS_omp.c -lm -o build/KMEANS_omp
+    gcc -Wall -fopenmp src/KMEANS_omp.c -lm -o build/KMEANS_omp
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build OpenMP version"
         exit 1
@@ -86,7 +86,7 @@ fi
 # Also build sequential version for comparison
 if [ ! -f "build/KMEANS_seq" ]; then
     echo "Building K-means sequential version..."
-    gcc -O3 -Wall src/KMEANS.c -lm -o build/KMEANS_seq
+    gcc -Wall src/KMEANS.c -lm -o build/KMEANS_seq
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build sequential version"
         exit 1

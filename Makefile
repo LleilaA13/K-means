@@ -35,8 +35,8 @@ MPICC=mpicc
 CUDACC=nvcc
 
 # Flags for optimization and libs
-FLAGS=-O3 -Wall
-CUDAFLAGS=-O3
+FLAGS=-Wall
+CUDAFLAGS=
 LIBS=-lm
 
 # Targets to build
@@ -185,7 +185,7 @@ sync:
 # Sync only source code and scripts
 sync-src:
 	@echo "Syncing only source code to cluster..."
-	rsync -av --include='src/' --include='scripts/' --include='Makefile' --include='*.md' --exclude='*' ./ $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)
+	rsync -av --include='src/' --include='scripts/*' --include='Makefile' --include='*.md' --exclude='*' ./ $(CLUSTER_USER)@$(CLUSTER_HOST):$(CLUSTER_PATH)
 
 # Show compiler information for debugging
 compiler-info:

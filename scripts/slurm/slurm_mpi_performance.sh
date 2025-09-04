@@ -82,7 +82,7 @@ echo "" >> logs/slurm_mpi_performance_results.txt
 if [ ! -f "build/KMEANS_mpi" ]; then
     echo "Building K-means MPI version..."
     mkdir -p build
-    mpicc -O3 -Wall src/KMEANS_mpi.c -lm -o build/KMEANS_mpi
+    mpicc -Wall src/KMEANS_mpi.c -lm -o build/KMEANS_mpi
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build MPI version"
         exit 1
@@ -92,7 +92,7 @@ fi
 # Also build sequential version for comparison
 if [ ! -f "build/KMEANS_seq" ]; then
     echo "Building K-means sequential version..."
-    gcc -O3 -Wall src/KMEANS.c -lm -o build/KMEANS_seq
+    gcc -Wall src/KMEANS.c -lm -o build/KMEANS_seq
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build sequential version"
         exit 1

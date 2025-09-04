@@ -26,10 +26,10 @@ echo "============================================"
 
 # Datasets to test (larger datasets as requested)
 DATASETS=(
-    "data/input100D.inp"
-    "data/input100D2.inp"
-    "data/200k_100.inp" 
-    "data/400k_100.inp"
+    # "data/input100D.inp"
+    # "data/input100D2.inp"
+    # "data/200k_100.inp" 
+    # "data/400k_100.inp"
     "data/800k_100.inp"
 )
 
@@ -87,7 +87,7 @@ echo "=== Building Executables ==="
 # Sequential version
 if [ ! -f "build/KMEANS_seq" ]; then
     echo "Building sequential version..."
-    gcc -O3 -Wall src/KMEANS.c -lm -o build/KMEANS_seq
+    gcc -Wall src/KMEANS.c -lm -o build/KMEANS_seq
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build sequential version"
         exit 1
@@ -97,7 +97,7 @@ fi
 # OpenMP version
 if [ ! -f "build/KMEANS_omp" ]; then
     echo "Building OpenMP version..."
-    gcc -O3 -Wall -fopenmp src/KMEANS_omp.c -lm -o build/KMEANS_omp
+    gcc -Wall -fopenmp src/KMEANS_omp.c -lm -o build/KMEANS_omp
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build OpenMP version"
         exit 1
@@ -107,7 +107,7 @@ fi
 # MPI version
 if [ ! -f "build/KMEANS_mpi" ]; then
     echo "Building MPI version..."
-    mpicc -O3 -Wall src/KMEANS_mpi.c -lm -o build/KMEANS_mpi
+    mpicc -Wall src/KMEANS_mpi.c -lm -o build/KMEANS_mpi
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build MPI version"
         exit 1
@@ -117,7 +117,7 @@ fi
 # MPI+OpenMP version
 if [ ! -f "build/KMEANS_mpi_omp" ]; then
     echo "Building MPI+OpenMP version..."
-    mpicc -O3 -Wall -fopenmp src/KMEANS_mpi_omp.c -lm -o build/KMEANS_mpi_omp
+    mpicc -Wall -fopenmp src/KMEANS_mpi_omp.c -lm -o build/KMEANS_mpi_omp
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build MPI+OpenMP version"
         exit 1

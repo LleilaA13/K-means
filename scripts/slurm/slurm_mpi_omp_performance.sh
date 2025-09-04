@@ -67,7 +67,7 @@ echo "" >> logs/slurm_mpi_omp_performance_results.txt
 if [ ! -f "build/KMEANS_mpi_omp" ]; then
     echo "Building K-means MPI+OpenMP version..."
     mkdir -p build
-    mpicc -O3 -Wall -fopenmp src/KMEANS_mpi_omp.c -lm -o build/KMEANS_mpi_omp
+    mpicc -Wall -fopenmp src/KMEANS_mpi_omp.c -lm -o build/KMEANS_mpi_omp
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build MPI+OpenMP version"
         exit 1
@@ -77,7 +77,7 @@ fi
 # Also build sequential version for comparison
 if [ ! -f "build/KMEANS_seq" ]; then
     echo "Building K-means sequential version..."
-    gcc -O3 -Wall src/KMEANS.c -lm -o build/KMEANS_seq
+    gcc -Wall src/KMEANS.c -lm -o build/KMEANS_seq
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to build sequential version"
         exit 1

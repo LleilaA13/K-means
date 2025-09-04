@@ -942,27 +942,46 @@ class KMeansPerformanceAnalyzer:
                 
                 # 1. SPEEDUP ACROSS DATASETS
                 if impl != 'seq':  # Sequential doesn't have speedup > 1
-                    for dataset in datasets:
-                        dataset_data = impl_data[impl_data['Dataset'] == dataset]
-                        if len(dataset_data) > 0:
-                            dataset_data = dataset_data.sort_values('Total_Cores')
+                    if impl == 'cuda':
+                        # For CUDA, create a bar chart showing speedup for each dataset
+                        cuda_datasets = []
+                        cuda_speedups = []
+                        cuda_colors = []
+                        
+                        for dataset in datasets:
+                            dataset_data = impl_data[impl_data['Dataset'] == dataset]
+                            if len(dataset_data) > 0:
+                                cuda_datasets.append(dataset)
+                                cuda_speedups.append(dataset_data['Speedup'].iloc[0])
+                                cuda_colors.append(dataset_colors.get(dataset, '#666666'))
+                        
+                        if cuda_datasets:
+                            bars = ax1.bar(cuda_datasets, cuda_speedups, color=cuda_colors, 
+                                          alpha=0.8, edgecolor='black', linewidth=1.5)
                             
-                            # Use distinct colors for each dataset
-                            color = dataset_colors.get(dataset, '#666666')
-                            marker = dataset_markers.get(dataset, 'o')
-                            linestyle = dataset_linestyles.get(dataset, '-')
-                            
-                            if impl == 'cuda':
-                                # For CUDA, show as horizontal line
-                                cuda_speedup = dataset_data['Speedup'].iloc[0]
-                                ax1.axhline(y=cuda_speedup, color=color, linestyle=linestyle, 
-                                           linewidth=2, alpha=0.8, label=f'{dataset}')
-                            else:
+                            # Add value labels on bars
+                            for bar, speedup in zip(bars, cuda_speedups):
+                                height = bar.get_height()
+                                ax1.text(bar.get_x() + bar.get_width()/2., height + height*0.02,
+                                       f'{speedup:.1f}x', ha='center', va='bottom', 
+                                       fontsize=10, fontweight='bold')
+                    else:
+                        # For other implementations, use line plots
+                        for dataset in datasets:
+                            dataset_data = impl_data[impl_data['Dataset'] == dataset]
+                            if len(dataset_data) > 0:
+                                dataset_data = dataset_data.sort_values('Total_Cores')
+                                
+                                # Use distinct colors for each dataset
+                                color = dataset_colors.get(dataset, '#666666')
+                                marker = dataset_markers.get(dataset, 'o')
+                                linestyle = dataset_linestyles.get(dataset, '-')
+                                
                                 ax1.plot(dataset_data['Total_Cores'], dataset_data['Speedup'], 
                                         marker=marker, linewidth=2, markersize=8, linestyle=linestyle,
                                         color=color, alpha=0.8, label=f'{dataset}')
                     
-                    ax1.set_xlabel('Number of Cores', fontsize=12, fontweight='bold')
+                    ax1.set_xlabel('Dataset' if impl == 'cuda' else 'Number of Cores', fontsize=12, fontweight='bold')
                     ax1.set_ylabel('Speedup', fontsize=12, fontweight='bold')
                     ax1.set_title(f'{impl.upper()} - Speedup Across Datasets', fontsize=14, fontweight='bold')
                     ax1.legend(fontsize=10, frameon=True)
@@ -981,6 +1000,9 @@ class KMeansPerformanceAnalyzer:
                             ticks = sorted(list(set(all_cores)))
                             ax1.set_xticks(ticks)
                             ax1.set_xticklabels([str(tick) for tick in ticks])
+                    else:
+                        # For CUDA bar chart, keep x-axis labels horizontal for better readability
+                        ax1.tick_params(axis='x', rotation=0)
                     ax1.set_ylim(bottom=0)
                 else:
                     ax1.text(0.5, 0.5, 'Sequential Implementation\n(Baseline for Speedup)', 

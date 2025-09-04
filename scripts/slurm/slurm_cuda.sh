@@ -38,13 +38,13 @@ echo "" >> logs/slurm_cuda_results.txt
 echo "Building versions..."
 
 # Sequential
-gcc -O3 -Wall src/KMEANS.c -lm -o build/KMEANS_seq
+gcc -Wall src/KMEANS.c -lm -o build/KMEANS_seq
 
 # OpenMP
-gcc -O3 -Wall -fopenmp src/KMEANS_omp.c -lm -o build/KMEANS_omp
+gcc -Wall -fopenmp src/KMEANS_omp.c -lm -o build/KMEANS_omp
 
 # CUDA (targeting RTX Quadro 6000 - sm_75)
-srun --partition=students --gpus=1 nvcc -O3 -arch=sm_75 src/KMEANS_cuda.cu -lm -o build/KMEANS_cuda
+srun --partition=students --gpus=1 nvcc -arch=sm_75 src/KMEANS_cuda.cu -lm -o build/KMEANS_cuda
 if [ $? -ne 0 ]; then
     echo "ERROR: Failed to build CUDA version"
     exit 1
