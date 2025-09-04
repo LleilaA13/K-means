@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
 
     // pointPerClass: number of points classified in each class
     // auxCentroids: mean of the points in each class
-    float *pointsPerClass = (float *)malloc(K * sizeof(float)); // Use float for easier Allreduce packing
+    float *pointsPerClass = (float *)malloc(K * sizeof(float)); 
     float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
     float *distCentroids = (float *)malloc(K * sizeof(float));
 
@@ -384,16 +384,6 @@ int main(int argc, char *argv[])
     size_t allgather_buffer_size = (1 + K + (K * samples));
     float *allgather_buffer = (float *)malloc(allgather_buffer_size * sizeof(float));
 
-    /*
-     * SIMPLE & EFFECTIVE HYBRID MPI+OpenMP STRATEGY:
-     *
-     * 1. MPI: Distribute data once, minimal communication per iteration
-     * 2. OpenMP: Parallelize all computational loops with simple, proven patterns
-     * 3. Focus on the 3 core parallelizable operations:
-     *    - Distance calculation & assignment
-     *    - Centroid accumulation
-     *    - Centroid averaging
-     */
 
     // Local variables for each process
     float *local_pointsPerClass = (float *)malloc(K * sizeof(float)); // Use float for consistency
@@ -433,7 +423,7 @@ int main(int argc, char *argv[])
             class = 1;
             minDist = FLT_MAX;
 
-            // Cache-friendly: process all centroids for current point (using row pointers like OMP version)
+            
             for (j = 0; j < K; j++)
             {
                 dist = euclideanDistance(local_row_pointers[i], &centroids[j * samples], samples);
@@ -593,7 +583,7 @@ int main(int argc, char *argv[])
      * STOP HERE: DO NOT CHANGE THE CODE BELOW THIS POINT
      *
      */
-    // Output and termination conditions
+    
     printf("%s", outputMsg);
 
     // END CLOCK*****************************************
@@ -639,11 +629,11 @@ int main(int argc, char *argv[])
         if (error != 0)
         {
             showFileError(error, argv[6]);
-            // Don't call exit/error here, just print error and continue to allow all processes to finish gracefully
+
         }
     }
 
-    // Free memory - proper cleanup
+    
     if (rank == 0 && data != NULL)
     {
         free(data);

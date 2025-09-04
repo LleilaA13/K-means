@@ -309,13 +309,10 @@ int main(int argc, char *argv[])
 	float dist, minDist;
 	int it = 0;
 	int changes = 0;
-	float float_changes = 0.0f; // Questa mi serve per dopo...
+	float float_changes = 0.0f; 
 	float maxDist;
 
-	// pointPerClass: number of points classified in each class
-	// auxCentroids: mean of the points in each class
-	// int *pointsPerClass = (int *)malloc(K * sizeof(int));
-	float *pointsPerClass = (float *)malloc(K * sizeof(float)); // Allora qui pointsPerClass lo alloco come un array di float perché è più comodo per la Allreduce e perché il valore verrebbe comunque castato a float quando si dividono gli auxCentroids per i pointsPerClass!
+	float *pointsPerClass = (float *)malloc(K * sizeof(float)); 
 	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
 	float *distCentroids = (float *)malloc(K * sizeof(float));
 	if (pointsPerClass == NULL || auxCentroids == NULL || distCentroids == NULL)
@@ -330,14 +327,6 @@ int main(int argc, char *argv[])
 	 * START HERE: DO NOT CHANGE THE CODE ABOVE THIS POINT
 	 *
 	 */
-	/* ----------- Ciao ----------- */
-	// Allora in teoria questa cosa non serve perché ogni processo MPI ha una sua copia dei dati, quindi ti serve solo lo start index e il numero
-	// di punti che sono assegnati a ogni processo. Togliendo queste malloc risparmi memoria. Ho fatto la stessa cosa più in basso con le altre
-	// variabili locali
-	// Defining the local variables ecc for each process to work with:
-	// int local_changes = 0;
-	// int *local_pointsPerClass = (int *)malloc(K * sizeof(int));
-	// float *local_auxCentroids = (float *)malloc(K * samples * sizeof(float));
 
 	// number of points not divisible by number of processes:
 	int local_lines = lines / size;
@@ -352,32 +341,14 @@ int main(int argc, char *argv[])
 	}
 
 	int start_index;
-	/* -------------------------------------------- Ciao ----------------------------------------------------------------------------- */
-	// Ho dovuto commentare questa cosa perché mi mandava tutto in segfault. Sempre per il concetto che se rank è una potenza di 2 allora
-	// reminder è sempre 0. L'ho sostituito semplicemente con la logica qui sotto.
-	// Perché devo dividere start_index per 100??? non lo so ma se non lo faccio il valore è sbagliato :/ bonus di un caffè se lo scopri
+	
 	start_index = (rank * local_lines * samples) / 100;
-	// if (rank < remainder)
-	// {
-	// 	start_index = rank * local_lines * samples; // start_index is the starting element index, not row
-	// }
-	// else
-	// {
-	// 	start_index = remainder * (local_lines + 1) * samples + (rank - remainder) * local_lines * samples;
-	// }
 
-	// Defining local data
-	// int *local_classMap = (int *)calloc(local_lines, sizeof(int));
-	// float *local_data = (float *)malloc(local_lines * samples * sizeof(float));
 
-	// for (i = 0; i < local_lines * samples; i++)
-	// {
-	// 	local_data[i] = data[start_index + i];
-	// }
 
 	printf("rank %d here, start_index = %d\n", rank, start_index);
 
-	size_t allgather_buffer_size = (1 + K + (K * samples)); // questo è size_t perché sizeof() ritorna un valore size_t quindi in realtà le variabili che rappresentano il numero di bytes occupati da un array dovrebbero essere sempre size_t (che praticamente è un unsigned long int)
+	size_t allgather_buffer_size = (1 + K + (K * samples)); 
 	float *allgather_buffer = (float *)malloc(allgather_buffer_size * sizeof(float));
 
 	do
@@ -414,10 +385,7 @@ int main(int argc, char *argv[])
 		zeroFloatMatriz(pointsPerClass, K, 1);
 		zeroFloatMatriz(auxCentroids, K, samples);
 
-		/*----------------- Ciao ----------------*/
-		// queste non servono perché lo fanno già le due funzioni qui sopra
-		// memset(pointsPerClass, 0, K * sizeof(int));			// Initialize local points per class
-		// memset(auxCentroids, 0, K * samples * sizeof(float)); // Initialize local auxiliary centroids
+
 
 		for (i = start_index; i < start_index + local_lines; ++i)
 		{
@@ -429,8 +397,6 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		/*------------------------ Ciao --------------------------*/
-		// Per ridurre l'overhead della Allreduce, fai un buffer unico e manda solo quello!
 		float_changes = (float)changes;
 		allgather_buffer[0] = float_changes;
 		memcpy(&allgather_buffer[1], pointsPerClass, K * sizeof(float));
@@ -446,7 +412,7 @@ int main(int argc, char *argv[])
 		{
 			for (j = 0; j < samples; j++)
 			{
-				auxCentroids[i * samples + j] /= pointsPerClass[i]; // Vedi perché pointsPerClass deve essere un array di float?
+				auxCentroids[i * samples + j] /= pointsPerClass[i]; 
 			}
 		}
 
@@ -469,22 +435,21 @@ int main(int argc, char *argv[])
 		}
 
 	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > pow(maxThreshold, 2)));
-	// Gather classMaps from all processes. but the processes have different local_classMap sizes
-	// use Gatherv
 
-	int *recvcounts = (int *)malloc(size * sizeof(int)); // Number of elements to receive from each process
-	int *displs = (int *)malloc(size * sizeof(int));	 // Displacements for each process
 
-	MPI_Gather(&local_lines, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, MPI_COMM_WORLD); // Gather local line counts
+	int *recvcounts = (int *)malloc(size * sizeof(int)); 
+	int *displs = (int *)malloc(size * sizeof(int));	 
+
+	MPI_Gather(&local_lines, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
 	if (rank == 0)
 	{
-		int total_lines = recvcounts[0]; // Initialize total_lines with the first process's count
-		displs[0] = 0;					 // Initialize displacements
+		int total_lines = recvcounts[0]; 
+		displs[0] = 0;					 
 		for (int i = 1; i < size; i++)
 		{
-			displs[i] = displs[i - 1] + recvcounts[i - 1]; // Calculate displacements
-			total_lines += recvcounts[i];				   // Update total_lines
+			displs[i] = displs[i - 1] + recvcounts[i - 1]; 
+			total_lines += recvcounts[i];				   
 		}
 		// Check if the total lines match the expected lines:
 		if (total_lines != lines)
@@ -540,14 +505,14 @@ int main(int argc, char *argv[])
 		printf("\n\nTermination condition:\nCentroid update precision reached: %g [%g]", maxDist, maxThreshold);
 	}
 
-	// Writing the classification of each point to the output file.
+	
 	if (rank == 0)
 	{
 		error = writeResult(classMap, lines, argv[6]);
 		if (error != 0)
 		{
 			showFileError(error, argv[6]);
-			// Don't call exit/error here, just print error and continue to allow all processes to finish gracefully
+			
 		}
 	}
 
