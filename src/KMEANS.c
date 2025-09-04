@@ -174,7 +174,6 @@ float euclideanDistance(float *point, float *center, int samples)
 	{
 		dist = fmaf(point[i] - center[i], point[i] - center[i], dist);
 	}
-	// sqrt() is not necessary
 	// dist = sqrt(dist);
 	return (dist);
 }
