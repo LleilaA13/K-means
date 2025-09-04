@@ -227,6 +227,7 @@ int main(int argc, char *argv[])
 	 *          algorithm stops.
 	 * argv[6]: Output file. Class assigned to each point of the input file.
 	 * argv[7]: Seed for random number generation.
+	 * argv[8]: Number of threads to use.
 	 * */
 
 	if (argc != 9)
@@ -301,6 +302,7 @@ int main(int argc, char *argv[])
 	printf("\nMemory allocation: %f seconds\n", end - start);
 	fflush(stdout);
 	//**************************************************
+
 	// START CLOCK***************************************
 	start = omp_get_wtime();
 	//**************************************************
@@ -315,8 +317,8 @@ int main(int argc, char *argv[])
 	float maxDist;
 
 	// pointPerClass: number of points classified in each class
-	// auxCentroids: mean of the points in each class
 	int *pointsPerClass = (int *)malloc(K * sizeof(int));
+	// auxCentroids: mean of the points in each class
 	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
 	float *distCentroids = (float *)malloc(K * sizeof(float));
 	if (pointsPerClass == NULL || auxCentroids == NULL || distCentroids == NULL)
@@ -334,9 +336,7 @@ int main(int argc, char *argv[])
 	omp_set_num_threads(threads);
 
 	/*------------------------- Ciao --------------------------*/
-	// Trucchettino per accedere ai dati più velocemente! Salvati in un array gli indirizzi di ogni riga della tua matrice dei dati, così quando
-	// fai data[i * samples] nel loop non ti devi andare a prendere in ram l'indirizzo!. Questa cosa fa andare il tutto un pò più veloce, visto
-	// che gli indirizzi sono sempre quelli!
+	// Precompute row pointers for better cache performance
 	float **row_pointers = (float **)malloc(lines * sizeof(float *));
 
 #pragma omp parallel for
@@ -351,7 +351,7 @@ int main(int argc, char *argv[])
 		changes = 0;
 
 		// 1. Calculate the distance from each point to the centroid
-		// Assign each point to the nearest centroid.
+		//    and Assign each point to the nearest centroid.
 #pragma omp parallel for private(i, j, class, minDist, dist) shared(data, centroids, classMap, lines, samples, K) reduction(+ : changes) schedule(dynamic, 128)
 		for (i = 0; i < lines; i++)
 		{
@@ -385,7 +385,7 @@ int main(int argc, char *argv[])
 		// Use reduction and better memory management
 #pragma omp parallel
 		{
-			// // Thread-local arrays - allocate once per thread
+			// Thread-local arrays - allocate once per thread
 			int *local_pointsPerClass = (int *)calloc(K, sizeof(int));
 			float *local_auxCentroids = (float *)calloc(K * samples, sizeof(float));
 

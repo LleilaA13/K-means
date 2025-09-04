@@ -25,24 +25,13 @@
 #include <cuda.h>
 #include <sys/time.h>
 
-// ================================================================================================
-// TIMING AND UTILITY FUNCTIONS
-// ================================================================================================
-
-/**
- * High-precision timing function for performance measurement
- * Replaces OpenMP timing with standard system calls
- */
+// TIme function for allocation and deallocation phase
 double get_time()
 {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return tv.tv_sec + tv.tv_usec * 1e-6;
 }
-
-// ================================================================================================
-// CONSTANTS AND MACROS
-// ================================================================================================
 
 #define MAXLINE 2000
 #define MAXCAD 200
@@ -68,10 +57,6 @@ double get_time()
 			fprintf(stderr, "-- Error CUDA last in line %d: %s\n", __LINE__, cudaGetErrorString(ok)); \
 	}
 
-// ================================================================================================
-// CUDA CONSTANT MEMORY DECLARATIONS
-// ================================================================================================
-
 /**
  * Constant memory for frequently accessed algorithm parameters
  * Provides broadcast access to all threads with minimal latency
@@ -79,10 +64,6 @@ double get_time()
 __constant__ int c_numPoints;  // Total number of data points
 __constant__ int c_dimensions; // Dimensionality of each point
 __constant__ int c_K;		   // Number of clusters
-
-// ================================================================================================
-// FILE I/O ERROR HANDLING
-// ================================================================================================
 
 /**
  * Display comprehensive file operation error messages
@@ -105,10 +86,6 @@ void showFileError(int error, char *filename)
 	}
 	fflush(stderr);
 }
-
-// ================================================================================================
-// DATA INPUT/OUTPUT FUNCTIONS
-// ================================================================================================
 
 /**
  * Parse input file to determine dataset dimensions
@@ -260,14 +237,9 @@ void zeroIntArray(int *array, int size)
 		array[i] = 0;
 }
 
-// ================================================================================================
-// CUDA MEMORY MANAGEMENT
-// ================================================================================================
+// Configure constant memory with algorithm parameters
+// Provides high-speed broadcast access to all GPU threads
 
-/**
- * Configure constant memory with algorithm parameters
- * Provides high-speed broadcast access to all GPU threads
- */
 void setConstantMemory(int numPoints, int dimensions, int K)
 {
 	CHECK_CUDA_CALL(cudaMemcpyToSymbol(c_numPoints, &numPoints, sizeof(int)));
@@ -275,15 +247,10 @@ void setConstantMemory(int numPoints, int dimensions, int K)
 	CHECK_CUDA_CALL(cudaMemcpyToSymbol(c_K, &K, sizeof(int)));
 }
 
-// ================================================================================================
-// HIGH-PERFORMANCE REDUCTION KERNELS
-// ================================================================================================
+// Ultra-fast warp-level reduction for maximum finding
+// - Uses register-level shuffle operations for optimal performance
+// Butterfly Pattern: Time complexity is O(log₂(32)) = 5 operations per warp
 
-/**
- * Ultra-fast warp-level reduction for maximum finding
- * Uses register-level shuffle operations for optimal performance
- * Time complexity: O(log₂(32)) = 5 operations per warp
- */
 __device__ __forceinline__ float warp_reduce_max(float val)
 {
 	// Participation mask: all 32 threads in warp participate
@@ -298,14 +265,12 @@ __device__ __forceinline__ float warp_reduce_max(float val)
 }
 
 /**
- * Block-level maximum reduction kernel
- * Combines warp-level reductions for maximum scalability
- *
- * ALGORITHM:
- * 1. Grid-stride loop for data loading
- * 2. Intra-warp reduction using shuffle operations
- * 3. Inter-warp reduction via shared memory
- * 4. Single result per block output
+ Block-level maximum reduction kernel
+ Combines warp-level reductions for maximum scalability
+	 1. Grid-stride loop for data loading
+	 2. Intra-warp reduction using shuffle operations
+	 3. Inter-warp reduction via shared memory
+	 4. Single result per block output
  */
 __global__ void reduce_max(float *inputs, unsigned int input_size, float *outputs)
 {
@@ -346,14 +311,8 @@ __global__ void reduce_max(float *inputs, unsigned int input_size, float *output
 		outputs[blockIdx.x] = maxVal;
 }
 
-// ================================================================================================
-// CORE K-MEANS CUDA KERNELS
-// ================================================================================================
-
-/**
- * Calculate Euclidean distances between old and new centroids
- * Used for convergence detection via maximum distance finding
- */
+// Kernel to Calculate Euclidean distances between old and new centroids
+// Used for convergence detection via maximum distance finding
 __global__ void calculateCentroidDistances(float *oldCentroids, float *newCentroids,
 										   float *distances, int K, int dimensions)
 {
@@ -373,13 +332,11 @@ __global__ void calculateCentroidDistances(float *oldCentroids, float *newCentro
 }
 
 /**
- * High-performance point assignment kernel with shared memory optimization
- *
- * FEATURES:
- * - Dynamic shared memory for centroid caching
- * - Collaborative loading across thread block
- * - Optimized distance calculation using fused multiply-add
- * - Atomic change counting for convergence detection
+Point assignment kernel with shared memory optimization
+	- Dynamic shared memory for centroid caching
+	- Collaborative loading across thread block
+	- Optimized distance calculation using fused multiply-add
+	- Atomic change counting for convergence detection
  */
 __global__ void assignPointsToCentroids(
 	float *points,
@@ -447,19 +404,19 @@ __global__ void assignPointsToCentroids(
 	}
 }
 
-/**
- * Parallel centroid recalculation kernel
- *
- * ORGANIZATION:
- * - Each block handles one cluster (blockIdx.x = cluster ID)
- * - Each thread handles one dimension (threadIdx.x = dimension ID)
- * - Collaborative counting and mean calculation
- *
- * ALGORITHM:
- * 1. Each thread sums points in its assigned cluster/dimension
- * 2. Thread 0 counts total points per cluster
- * 3. Calculate mean coordinates for new centroids
- */
+/*
+ Parallel centroid recalculation kernel
+
+ Workload distribution:
+	- Each block handles one cluster (blockIdx.x = cluster ID)
+	- Each thread handles one dimension (threadIdx.x = dimension ID)
+	- Collaborative counting and mean calculation
+
+ Algorithm:
+	1. Each thread sums points in its assigned cluster/dimension
+	2. Thread 0 counts total points per cluster
+	3. Calculate mean coordinates for new centroids
+*/
 __global__ void recalculateCentroids(
 	float *points,
 	int *assignments,
@@ -502,10 +459,6 @@ __global__ void recalculateCentroids(
 	else
 		newCentroids[clusterIdx * c_dimensions + dimIdx] = 0.0f; // Handle empty clusters
 }
-
-// ================================================================================================
-// MAIN ALGORITHM IMPLEMENTATION
-// ================================================================================================
 
 int main(int argc, char *argv[])
 {
@@ -614,15 +567,6 @@ int main(int argc, char *argv[])
 		exit(-4);
 	}
 
-	// ===== HIGH-PERFORMANCE GPU COMPUTATION SECTION =====
-	/*
-	 * This section implements the core K-means algorithm using advanced CUDA optimizations:
-	 * - CUDA Events for precise computation timing
-	 * - Async memory operations with streams for overlap
-	 * - Ultra-fast reduction kernels for convergence detection
-	 * - Dynamic shared memory optimization based on device capabilities
-	 */
-
 	// ===== CUDA PERFORMANCE MEASUREMENT SETUP =====
 	cudaEvent_t computation_start, computation_stop;
 	CHECK_CUDA_CALL(cudaEventCreate(&computation_start));
@@ -720,11 +664,10 @@ int main(int argc, char *argv[])
 
 		CHECK_CUDA_CALL(cudaStreamSynchronize(stream)); // Ensure completion before convergence check
 
-		// ===== ULTRA-FAST GPU-BASED CONVERGENCE DETECTION =====
-		/*
-		 * Replaces CPU bottleneck with high-performance GPU reduction
-		 * Uses warp-level primitives for maximum efficiency
-		 */
+		// ===== GPU-BASED CONVERGENCE DETECTION =====
+
+		// Replaces CPU bottleneck with high-performance GPU reduction
+		// Uses warp-level primitives for maximum efficiency
 
 		// Step 1: Calculate distances between old and new centroids
 		int distBlockSize = 256;
