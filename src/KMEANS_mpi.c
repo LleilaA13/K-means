@@ -309,10 +309,10 @@ int main(int argc, char *argv[])
 	float dist, minDist;
 	int it = 0;
 	int changes = 0;
-	float float_changes = 0.0f; 
+	float float_changes = 0.0f;
 	float maxDist;
 
-	float *pointsPerClass = (float *)malloc(K * sizeof(float)); 
+	float *pointsPerClass = (float *)malloc(K * sizeof(float));
 	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
 	float *distCentroids = (float *)malloc(K * sizeof(float));
 	if (pointsPerClass == NULL || auxCentroids == NULL || distCentroids == NULL)
@@ -328,27 +328,30 @@ int main(int argc, char *argv[])
 	 *
 	 */
 
-	// number of points not divisible by number of processes:
+	// Distribute data points evenly across processes
 	int local_lines = lines / size;
 	int remainder = lines % size;
 
-	printf("rank: %d, remainder: %d, local_lines = %d\n", rank, remainder, local_lines);
+	printf("rank: %d, remainder: %d, base_local_lines = %d\n", rank, remainder, local_lines);
 
-	// the first remainder ranks each get one extra row if rank < remainder:
+	// Calculate start index and actual local_lines for this rank
+	int start_index;
 	if (rank < remainder)
 	{
-		local_lines++;
+		// First 'remainder' ranks get one extra point
+		local_lines++; // This rank gets an extra point
+		start_index = rank * local_lines;
+	}
+	else
+	{
+		// Remaining ranks get the base number of points
+		start_index = remainder * (local_lines + 1) + (rank - remainder) * local_lines;
 	}
 
-	int start_index;
-	
-	start_index = (rank * local_lines * samples) / 100;
+	printf("rank %d: start_index = %d, local_lines = %d, end_index = %d\n",
+		   rank, start_index, local_lines, start_index + local_lines - 1);
 
-
-
-	printf("rank %d here, start_index = %d\n", rank, start_index);
-
-	size_t allgather_buffer_size = (1 + K + (K * samples)); 
+	size_t allgather_buffer_size = (1 + K + (K * samples));
 	float *allgather_buffer = (float *)malloc(allgather_buffer_size * sizeof(float));
 
 	do
@@ -385,8 +388,6 @@ int main(int argc, char *argv[])
 		zeroFloatMatriz(pointsPerClass, K, 1);
 		zeroFloatMatriz(auxCentroids, K, samples);
 
-
-
 		for (i = start_index; i < start_index + local_lines; ++i)
 		{
 			class = classMap[i];
@@ -412,7 +413,7 @@ int main(int argc, char *argv[])
 		{
 			for (j = 0; j < samples; j++)
 			{
-				auxCentroids[i * samples + j] /= pointsPerClass[i]; 
+				auxCentroids[i * samples + j] /= pointsPerClass[i];
 			}
 		}
 
@@ -436,20 +437,19 @@ int main(int argc, char *argv[])
 
 	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > pow(maxThreshold, 2)));
 
-
-	int *recvcounts = (int *)malloc(size * sizeof(int)); 
-	int *displs = (int *)malloc(size * sizeof(int));	 
+	int *recvcounts = (int *)malloc(size * sizeof(int));
+	int *displs = (int *)malloc(size * sizeof(int));
 
 	MPI_Gather(&local_lines, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
 	if (rank == 0)
 	{
-		int total_lines = recvcounts[0]; 
-		displs[0] = 0;					 
+		int total_lines = recvcounts[0];
+		displs[0] = 0;
 		for (int i = 1; i < size; i++)
 		{
-			displs[i] = displs[i - 1] + recvcounts[i - 1]; 
-			total_lines += recvcounts[i];				   
+			displs[i] = displs[i - 1] + recvcounts[i - 1];
+			total_lines += recvcounts[i];
 		}
 		// Check if the total lines match the expected lines:
 		if (total_lines != lines)
@@ -505,14 +505,12 @@ int main(int argc, char *argv[])
 		printf("\n\nTermination condition:\nCentroid update precision reached: %g [%g]", maxDist, maxThreshold);
 	}
 
-	
 	if (rank == 0)
 	{
 		error = writeResult(classMap, lines, argv[6]);
 		if (error != 0)
 		{
 			showFileError(error, argv[6]);
-			
 		}
 	}
 
